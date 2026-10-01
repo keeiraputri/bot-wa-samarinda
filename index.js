@@ -12,18 +12,17 @@ const path = require('path');
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 const PHONE_NUMBER = "6285849496579"; // Nomor WhatsApp Anda
 
-// Fungsi pemanggilan Gemini API menggunakan model terbaru (Gemini 3.x)
-async function askGemini(promptText) {
+// Fungsi pemanggilan Gemini API dengan penanganan Rate Limit & Model Resmi
+async function askGemini(promptText, retryCount = 0) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("GEMINI_API_KEY tidak ditemukan di Variables Railway!");
 
     const systemInstruction = "Anda adalah Customer Service resmi Bangun Rumah Samarinda (jasa renovasi & pembangunan rumah di Samarinda). Jawablah pertanyaan pelanggan dengan ramah, singkat, dan informatif.";
     
-    // Daftar nama model Gemini terbaru sesuai petunjuk log
+    // Model resmi dan paling stabil dari Google AI Studio
     const models = [
-        'gemini-3.8-flash',
-        'gemini-3.1-pro-preview',
-        'gemini-3.1-pro'
+        'gemini-1.5-flash',
+        'gemini-1.5-pro'
     ];
 
     let lastError = "";
@@ -46,9 +45,18 @@ async function askGemini(promptText) {
                 const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (reply) return reply;
             } else {
-                const errText = await response.text();
-                console.log(`[DEBUG] Model ${model} gagal (${response.status}): ${errText}`);
-                lastError = errText;
+                const errData = await response.json().catch(() => ({}));
+                const status = response.status;
+
+                // Jika terkena batas kuota / rate limit (Status 429), lakukan tunggu otomatis
+                if ((status === 429 || errData?.error?.message?.includes('quota')) && retryCount < 2) {
+                    console.log(`[RATE LIMIT] Terkena batas kuota gratisan. Menunggu 10 detik sebelum coba lagi...`);
+                    await delay(10000); // Tunggu 10 detik
+                    return await askGemini(promptText, retryCount + 1);
+                }
+
+                lastError = errData?.error?.message || `HTTP ${status}`;
+                console.log(`[DEBUG] Model ${model} gagal (${status}): ${lastError}`);
             }
         } catch (err) {
             console.log(`[DEBUG] Model ${model} error: ${err.message}`);
@@ -56,7 +64,7 @@ async function askGemini(promptText) {
         }
     }
 
-    throw new Error(`Semua model Gemini gagal. Detail: ${lastError}`);
+    throw new Error(`Gagal memproses AI: ${lastError}`);
 }
 
 async function startBot() {
