@@ -3,9 +3,10 @@ const {
     useMultiFileAuthState, 
     DisconnectReason, 
     fetchLatestBaileysVersion,
-    delay
+    Browsers
 } = require("@whiskeysockets/baileys");
 const express = require('express');
+const QRCode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
@@ -14,53 +15,81 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 
-// NOMOR WHATSAPP BOT (Pastikan diawali 62)
-const PHONE_NUMBER = "6285849496579"; 
-
-let currentPairingCode = '';
+let currentQR = '';
 let isConnected = false;
 
-app.get('/', (req, res) => {
+// Server Web untuk Menampilkan QR Live
+app.get('/', async (req, res) => {
     if (isConnected) {
         return res.send(`
-            <div style="text-align:center; font-family:sans-serif; margin-top:50px;">
-                <h1 style="color:green;">✅ BOT WHATSAPP AKTIF & TERHUBUNG!</h1>
-                <p>CS Bangun Rumah Samarinda siap membalas pesan.</p>
-            </div>
+            <!DOCTYPE html>
+            <html>
+            <head><title>Bot WA Status</title><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+            <body style="font-family: Arial, sans-serif; text-align: center; padding-top: 50px; background: #f4f6f9;">
+                <div style="background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                    <h1 style="color: #2e7d32; margin-bottom: 10px;">✅ BOT BERHASIL TERHUBUNG!</h1>
+                    <p style="color: #555;">WhatsApp CS Bangun Rumah Samarinda aktif dan siap membalas pesan.</p>
+                </div>
+            </body>
+            </html>
         `);
     }
 
-    if (!currentPairingCode) {
+    if (!currentQR) {
         return res.send(`
-            <div style="text-align:center; font-family:sans-serif; margin-top:50px;">
-                <h2>⏳ Memuat Kode Pairing Baru...</h2>
-                <p>Halaman ini akan memuat ulang otomatis dalam 5 detik.</p>
-                <script>setTimeout(() => location.reload(), 5000);</script>
-            </div>
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Memuat QR Code...</title>
+                <meta http-equiv="refresh" content="3">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+            </head>
+            <body style="font-family: Arial, sans-serif; text-align: center; padding-top: 50px; background: #f4f6f9;">
+                <div style="background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                    <h2>⏳ Memuat QR Code Baru...</h2>
+                    <p style="color: #666;">Silakan tunggu beberapa detik, halaman memuat ulang otomatis...</p>
+                </div>
+            </body>
+            </html>
         `);
     }
 
-    res.send(`
-        <div style="text-align:center; font-family:sans-serif; margin-top:40px;">
-            <h2>Kode Tautan WhatsApp Bot</h2>
-            <p>Masukkan kode ini segera di WhatsApp HP Anda (Berlaku ~2 menit):</p>
-            <div style="font-size: 42px; font-weight: bold; letter-spacing: 5px; color: #25D366; margin: 20px 0; background: #f0f4f8; padding: 15px; display: inline-block; border-radius: 10px; border: 2px dashed #25D366;">
-                ${currentPairingCode}
-            </div>
-            <p style="color: #666; font-size: 14px;">WhatsApp > Perangkat Tertaut > Tautkan Perangkat > <b>Tautkan dengan nomor telepon saja</b></p>
-        </div>
-    `);
+    try {
+        const qrImage = await QRCode.toDataURL(currentQR);
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Scan QR Code WhatsApp Bot</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <script>setTimeout(() => location.reload(), 7000);</script>
+            </head>
+            <body style="font-family: Arial, sans-serif; text-align: center; padding-top: 30px; background: #f4f6f9;">
+                <div style="background: white; padding: 25px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 90%;">
+                    <h2 style="color: #075e54; margin-top: 0;">Scan QR Code WhatsApp Bot</h2>
+                    <p style="color: #d32f2f; font-size: 13px; font-weight: bold; margin-bottom: 15px;">Arahkan kamera HP ke gambar ini sekarang:</p>
+                    <img src="${qrImage}" style="width: 270px; height: 270px; border: 1px solid #ddd; padding: 8px; border-radius: 8px;" />
+                    <p style="color: #666; font-size: 12px; margin-top: 15px;">Halaman otomatis diperbarui tiap 7 detik.</p>
+                </div>
+            </body>
+            </html>
+        `);
+    } catch (err) {
+        res.send("Gagal merender QR Code.");
+    }
 });
 
-app.listen(PORT, () => console.log(`🌐 Web Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🌐 Web Server running di port ${PORT}`));
 
-function purgeSession() {
+// Menghapus sesi lama jika belum terdaftar
+function clearAuth() {
     if (fs.existsSync(AUTH_DIR)) {
-        console.log('🧹 Menghapus folder auth lama...');
+        console.log('🧹 Menghapus folder auth lama untuk membuat sesi bersih...');
         try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
     }
 }
 
+// Fungsi Balas AI Groq
 async function askAI(promptText) {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan di Variables Railway!");
@@ -71,7 +100,7 @@ async function askAI(promptText) {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
+            "Content-Type": "Authorization/json"
         },
         body: JSON.stringify({
             model: "llama-3.1-8b-instant",
@@ -98,9 +127,9 @@ async function startBot() {
     if (fs.existsSync(credsPath)) {
         try {
             const credsData = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
-            if (!credsData.registered) purgeSession();
+            if (!credsData.registered) clearAuth();
         } catch (e) {
-            purgeSession();
+            clearAuth();
         }
     }
 
@@ -111,8 +140,7 @@ async function startBot() {
         version,
         auth: state,
         logger: pino({ level: 'silent' }),
-        // Format signature browser yang kompatibel dengan Pairing Code
-        browser: ["Chrome (Linux)", "", ""],
+        browser: Browsers.macOS('Desktop'),
         syncFullHistory: false,
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
@@ -123,40 +151,32 @@ async function startBot() {
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+            currentQR = qr;
+            console.log('📌 QR Code Baru Berhasil Dibuat di Tampilan Web!');
+        }
 
         if (connection === 'close') {
             isConnected = false;
-            currentPairingCode = '';
+            currentQR = '';
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             console.log(`[KONEKSI TERPUTUS] Status Code: ${statusCode}`);
 
             if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 408 || statusCode === 515) {
-                purgeSession();
+                clearAuth();
             }
 
             setTimeout(() => startBot(), 5000);
         } else if (connection === 'open') {
             isConnected = true;
-            currentPairingCode = '';
+            currentQR = '';
             console.log('\n==============================================');
             console.log('✅ BOT WHATSAPP BANGUN RUMAH SAMARINDA AKTIF!');
             console.log('==============================================\n');
         }
     });
-
-    if (!sock.authState.creds.registered) {
-        await delay(6000);
-        try {
-            const cleanPhone = PHONE_NUMBER.replace(/[^0-9]/g, '');
-            const code = await sock.requestPairingCode(cleanPhone);
-            currentPairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
-
-            console.log(`🔑 KODE PAIRING BARU: ${currentPairingCode}`);
-        } catch (err) {
-            console.error('Gagal meminta kode pairing:', err.message);
-        }
-    }
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
