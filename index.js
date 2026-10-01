@@ -40,17 +40,23 @@ async function startBot() {
     });
 
     sock.ev.on('creds.update', saveCreds);
-
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
         
-        if (!msg.message || msg.key.fromMe) return;
+        if (msg.key.fromMe) return;
+        if (!msg.message) return;
 
         const sender = msg.key.remoteJid;
-        const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text;
         
+        const textMessage = msg.message.conversation || 
+                            msg.message.extendedTextMessage?.text || 
+                            msg.message.imageMessage?.caption || 
+                            msg.message.videoMessage?.caption;
+
         if (!textMessage) return;
+
+        console.log(`Pesan masuk dari ${sender}: ${textMessage}`);
 
         try {
             const prompt = `Anda adalah customer service profesional untuk "Bangun Rumah Samarinda", jasa kontraktor dan renovasi rumah di Kota Samarinda. Jawablah pertanyaan klien berikut: "${textMessage}"`;
@@ -59,11 +65,12 @@ async function startBot() {
             const response = await result.response;
             const replyText = response.text();
 
+            console.log(`Mengirim balasan ke ${sender}`);
             await sock.sendMessage(sender, { text: replyText });
         } catch (error) {
             console.error('Gagal merespons dengan AI:', error);
+            await sock.sendMessage(sender, { text: 'Maaf, sistem sedang memproses permintaan Anda. Silakan coba sebentar lagi.' });
         }
     });
-}
 
 startBot();
