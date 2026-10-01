@@ -8,7 +8,7 @@ const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('/app/auth_info_baileys');
 
-const sock = makeWASocket({
+    const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
         browser: ["Ubuntu", "Chrome", "22.04.4"],
@@ -16,11 +16,29 @@ const sock = makeWASocket({
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 30000,
         markOnlineOnConnect: true
-    });    if (!sock.authState.creds.registered) {
-        const phoneNumber = "6282155852493"; 
+    });
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect } = update;
         
+        if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) {
+                console.log('Koneksi terputus, mencoba menghubungkan ulang...');
+                startBot();
+            }
+        } else if (connection === 'open') {
+            console.log('Bot WhatsApp Bangun Rumah Samarinda berhasil terhubung!');
+        }
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    // Meminta pairing code setelah socket aktif jika belum terdaftar
+    if (!sock.authState.creds.registered) {
         setTimeout(async () => {
             try {
+                const phoneNumber = "6282155852493";
                 const code = await sock.requestPairingCode(phoneNumber);
                 console.log(`\n========================================`);
                 console.log(` KODE PAIRING WHATSAPP ANDA: ${code} `);
@@ -28,20 +46,8 @@ const sock = makeWASocket({
             } catch (err) {
                 console.error('Gagal meminta pairing code:', err);
             }
-        }, 5000);
+        }, 8000);
     }
-
-    sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update;
-        if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) startBot();
-        } else if (connection === 'open') {
-            console.log('Bot WhatsApp Bangun Rumah Samarinda berhasil terhubung!');
-        }
-    });
-
-    sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
