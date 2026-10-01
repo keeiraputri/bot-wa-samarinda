@@ -3,14 +3,16 @@ const {
     useMultiFileAuthState, 
     DisconnectReason, 
     fetchLatestBaileysVersion,
-    Browsers
+    Browsers,
+    delay
 } = require("@whiskeysockets/baileys");
 const fs = require('fs');
 const path = require('path');
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
+const PHONE_NUMBER = "6285849496579"; // Nomor WhatsApp Anda
 
-// Fungsi pemanggilan Gemini API dengan Auto-Fallback Endpoint
+// Fungsi pemanggilan Gemini API dengan Auto-Fallback Endpoint (Anti 404)
 async function askGemini(promptText) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("GEMINI_API_KEY tidak ditemukan di Variables Railway!");
@@ -95,6 +97,21 @@ async function startBot() {
             console.log('==============================================\n');
         }
     });
+
+    // Minta kode pautan otomatis jika belum terhubung
+    if (!sock.authState.creds.registered) {
+        await delay(5000);
+        try {
+            const cleanPhone = PHONE_NUMBER.replace(/[^0-9]/g, '');
+            const code = await sock.requestPairingCode(cleanPhone);
+            console.log('\n==============================================');
+            console.log(`🔑 KODE PAIRING WHATSAPP ANDA: ${code}`);
+            console.log('==============================================');
+            console.log('SEGERA MASUKKAN KODE INI DI WHATSAPP HP ANDA!\n');
+        } catch (err) {
+            console.error('Gagal meminta kode pairing:', err.message);
+        }
+    }
 
     // Mendengarkan Pesan Masuk
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
