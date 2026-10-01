@@ -12,17 +12,18 @@ const path = require('path');
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 const PHONE_NUMBER = "6285849496579"; // Nomor WhatsApp Anda
 
-// Fungsi pemanggilan Gemini API v1beta (Anti 404)
+// Fungsi pemanggilan Gemini API dengan model resmi terbaru
 async function askGemini(promptText) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("GEMINI_API_KEY tidak ditemukan di Variables Railway!");
 
     const systemInstruction = "Anda adalah Customer Service resmi Bangun Rumah Samarinda (jasa renovasi & pembangunan rumah di Samarinda). Jawablah pertanyaan pelanggan dengan ramah, singkat, dan informatif.";
     
+    // Daftar nama model resmi yang didukung API
     const models = [
-        'gemini-1.5-flash',
-        'gemini-2.0-flash',
-        'gemini-1.5-pro'
+        'gemini-2.5-flash',
+        'gemini-2.5-pro',
+        'gemini-1.5-flash-latest'
     ];
 
     let lastError = "";
