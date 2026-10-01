@@ -3,10 +3,12 @@ const {
     useMultiFileAuthState, 
     DisconnectReason, 
     fetchLatestBaileysVersion,
+    Browsers,
     delay
 } = require("@whiskeysockets/baileys");
 const fs = require('fs');
 const path = require('path');
+const pino = require('pino');
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 const PHONE_NUMBER = "6282155852493"; // Nomor WhatsApp Bot Anda
@@ -51,8 +53,9 @@ async function startBot() {
     const sock = makeWASocket({
         version,
         auth: state,
+        logger: pino({ level: 'silent' }), // Sembunyikan log eror buffer non-kritis
         printQRInTerminal: false,
-        browser: ["Ubuntu", "Chrome", "20.0.04"],
+        browser: Browsers.macOS("Desktop"), // Browser signature paling stabil untuk pairing code
         syncFullHistory: false,
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
@@ -69,7 +72,7 @@ async function startBot() {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             console.log(`[KONEKSI TERPUTUS] Status Code: ${statusCode}`);
 
-            // Hapus file auth korup jika terputus/gagal taut
+            // Hapus folder auth jika belum pernah sukses bertaut atau sesi rusal
             if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 408 || statusCode === 515) {
                 if (fs.existsSync(AUTH_DIR)) {
                     fs.rmSync(AUTH_DIR, { recursive: true, force: true });
@@ -85,9 +88,9 @@ async function startBot() {
         }
     });
 
-    // Minta Kode Pairing HANYA jika belum pernah bertaut
+    // Minta Kode Pairing HANYA jika belum bertaut
     if (!sock.authState.creds.registered) {
-        await delay(6000);
+        await delay(5000);
         try {
             const cleanPhone = PHONE_NUMBER.replace(/[^0-9]/g, '');
             const code = await sock.requestPairingCode(cleanPhone);
