@@ -1,85 +1,76 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
-const fetch = require('node-fetch');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
+const { GoogleGenAI } = require("@google/genai");
+const fs = require('fs');
+const readline = require('readline');
 
-// Mengambil API Key dari Environment Variable Railway/Render
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+// Inisialisasi Gemini API Key dari Environment Variable Railway
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-async function getGeminiReply(userPrompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`;
-  
-  const systemContext = `Anda adalah AI Assistant cerdas sekaligus CS Virtual resmi 'bangunrumah.online' (Bangun Rumah Samarinda).
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+const question = (text) => new Promise((resolve) => rl.question(text, resolve));
 
-PERAN & KEMAMPUAN UTAMA:
-1. MATEMATIKA & PERKALIAN: Jawab semua perhitungan/perkalian dengan cepat dan akurat.
-2. ESTIMASI BIAYA BANGUN RUMAH / RAB:
-   - Biaya dasar pembangunan: Rp 3.100.000 / m².
-   - Biaya = Luas x Rp 3.100.000. Jika 2 lantai, kalikan luas dengan 2.
-3. PENGETAHUAN UMUM: Jawab pertanyaan umum dan sapaan santai secara ramah.
+async function startBot() {
+    const { state, saveCreds } = await useMultiFileAuthState('/app/auth_info_baileys');
 
-GAYA BAHASA: Jawab dengan sopan, ramah, dan komunikatif. Selipkan penawaran konsultasi & survei lokasi GRATIS di Samarinda jika relevan.`;
-
-  const payload = {
-    contents: [{ parts: [{ text: `${systemContext}\n\nPertanyaan Pelanggan: ${userPrompt}` }] }]
-  };
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: false // Kita nonaktifkan QR Code terminal agar pakai Pairing Code
     });
-    const json = await response.json();
-    return json.candidates?.[0]?.content?.parts?.[0]?.text || "Halo! Ada yang bisa kami bantu mengenai rencana pembangunan atau renovasi rumah Anda?";
-  } catch (err) {
-    console.error("Error Gemini API:", err);
-    return "Halo! Terima kasih telah menghubungi Bangun Rumah Samarinda. Ada yang bisa kami bantu?";
-  }
+
+    // Jika belum terhubung, gunakan Pairing Code via Nomor HP
+    if (!sock.authState.creds.registered) {
+        // Masukkan nomor WhatsApp bot Anda di sini (contoh: 62812345678)
+        const phoneNumber = await question('Masukkan nomor WhatsApp Anda (cth: 628xxx): ');
+        const code = await sock.requestPairingCode(phoneNumber);
+        console.log(`\n========================================`);
+        console.log(` KODE PAIRING WHATSAPP ANDA: ${code} `);
+        console.log(`========================================\n`);
+    }
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect } = update;
+        if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log('Koneksi terputus, mencoba menghubungkan kembali...', shouldReconnect);
+            if (shouldReconnect) {
+                startBot();
+            }
+        } else if (connection === 'open') {
+            console.log('Bot WhatsApp Bangun Rumah Samarinda berhasil terhubung!');
+        }
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    // Fitur AI Gemini untuk merespons pesan masuk
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
+        const msg = messages[0];
+        if (!msg.message || msg.key.fromMe) return;
+
+        const sender = msg.key.remoteJid;
+        const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text;
+
+        if (!textMessage) return;
+
+        console.log(`Pesan masuk dari ${sender}: ${textMessage}`);
+
+        try {
+            // Konteks khusus untuk layanan Bangun Rumah Samarinda
+            const prompt = `Anda adalah customer service profesional untuk "Bangun Rumah Samarinda", sebuah jasa kontraktor dan renovasi rumah terpercaya di Kota Samarinda. Jawablah pertanyaan klien berikut secara ramah, informatif, dan mengarahkan mereka untuk menggunakan jasa renovasi atau pembangunan rumah lantai 2 di Samarinda: "${textMessage}"`;
+
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+            });
+
+            const replyText = response.text;
+            await sock.sendMessage(sender, { text: replyText });
+        } catch (error) {
+            console.error('Gagal merespons dengan Gemini AI:', error);
+            await sock.sendMessage(sender, { text: 'Maaf, sistem AI sedang sibuk. Silakan coba beberapa saat lagi.' });
+        }
+    });
 }
 
-async function connectToWhatsApp() {
-  // Menyimpan sesi login di folder 'auth_info_baileys'
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
-
-  const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: true
-  });
-
-  sock.ev.on('creds.update', saveCreds);
-
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update;
-    
-    if (qr) {
-      console.log('--- SCAN QR CODE DI BAWAH INI MENGGUNAKAN WHATSAPP ---');
-      qrcode.generate(qr, { small: true });
-    }
-
-    if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log('Koneksi terputus, mencoba menghubungkan ulang...', shouldReconnect);
-      if (shouldReconnect) {
-        connectToWhatsApp();
-      }
-    } else if (connection === 'open') {
-      console.log('✅ BOT WHATSAPP SAMARINDA BERHASIL TERHUBUNG!');
-    }
-  });
-
-  sock.ev.on('messages.upsert', async (m) => {
-    const msg = m.messages[0];
-    if (!msg.message || msg.key.fromMe) return;
-
-    const sender = msg.key.remoteJid;
-    const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-
-    if (text) {
-      console.log(`Pesan masuk dari ${sender}: ${text}`);
-      const reply = await getGeminiReply(text);
-      await sock.sendMessage(sender, { text: reply });
-    }
-  });
-}
-
-connectToWhatsApp();
+startBot();
