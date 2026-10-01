@@ -15,7 +15,7 @@ async function startBot() {
     });
 
     if (!sock.authState.creds.registered) {
-        const phoneNumber = "6282155852493"; // Nomor Anda
+        const phoneNumber = "6282155852493"; 
         
         setTimeout(async () => {
             try {
@@ -40,7 +40,8 @@ async function startBot() {
     });
 
     sock.ev.on('creds.update', saveCreds);
-sock.ev.on('messages.upsert', async ({ messages, type }) => {
+
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
         
@@ -72,5 +73,6 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
             await sock.sendMessage(sender, { text: 'Maaf, sistem sedang memproses permintaan Anda. Silakan coba sebentar lagi.' });
         }
     });
+}
 
 startBot();
