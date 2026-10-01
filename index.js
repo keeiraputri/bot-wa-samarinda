@@ -2,32 +2,24 @@ const {
     default: makeWASocket, 
     useMultiFileAuthState, 
     DisconnectReason, 
-    fetchLatestBaileysVersion
+    fetchLatestBaileysVersion,
+    Browsers
 } = require("@whiskeysockets/baileys");
-const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 
-// Menghapus folder auth jika belum bertaut
-function purgeUnregisteredSession() {
-    const credsPath = path.join(AUTH_DIR, 'creds.json');
-    if (fs.existsSync(credsPath)) {
+function clearAuth() {
+    if (fs.existsSync(AUTH_DIR)) {
+        console.log('🧹 Menghapus folder auth_info_baileys...');
         try {
-            const credsData = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
-            if (!credsData.registered) {
-                console.log('🧹 Menghapus sesi lama...');
-                fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-            }
-        } catch (e) {
             fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-        }
+        } catch (e) {}
     }
 }
 
-// Fungsi AI Groq
 async function askAI(promptText) {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan di Variables Railway!");
@@ -61,16 +53,21 @@ async function askAI(promptText) {
 }
 
 async function startBot() {
-    purgeUnregisteredSession();
-
     const { version } = await fetchLatestBaileysVersion();
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    let { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+
+    if (!state.creds.registered) {
+        clearAuth();
+        const freshAuth = await useMultiFileAuthState(AUTH_DIR);
+        state = freshAuth.state;
+        saveCreds = freshAuth.saveCreds;
+    }
 
     const sock = makeWASocket({
         version,
         auth: state,
         logger: pino({ level: 'silent' }),
-        browser: ["Ubuntu", "Chrome", "20.0.04"],
+        browser: Browsers.macOS('Desktop'), // Browser signature resmi paling cocok untuk QR Code
         syncFullHistory: false,
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
@@ -84,12 +81,10 @@ async function startBot() {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            // Membuat URL gambar QR Code beresolusi tinggi
-            const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
-            
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
             console.log('\n==============================================');
-            console.log('🔗 BUKA LINK DI BAWAH INI UNTUK SCAN QR JELAS:');
-            console.log(qrImageUrl);
+            console.log('🔗 BUKA LINK INI DI BROWSER UNTUK SCAN QR:');
+            console.log(qrUrl);
             console.log('==============================================\n');
         }
 
@@ -98,9 +93,7 @@ async function startBot() {
             console.log(`[KONEKSI TERPUTUS] Status Code: ${statusCode}`);
 
             if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 408 || statusCode === 515) {
-                if (fs.existsSync(AUTH_DIR)) {
-                    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-                }
+                clearAuth();
             }
 
             setTimeout(() => startBot(), 5000);
