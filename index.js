@@ -1,17 +1,17 @@
- const { 
+const { 
     default: makeWASocket, 
     useMultiFileAuthState, 
     DisconnectReason, 
     fetchLatestBaileysVersion,
-    Browsers,
     delay
 } = require("@whiskeysockets/baileys");
 const fs = require('fs');
 const path = require('path');
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
-const PHONE_NUMBER = "6285849496579";
+const PHONE_NUMBER = "6282155852493"; // Nomor WhatsApp Bot Anda
 
+// Fungsi pemanggilan AI menggunakan Groq API
 async function askAI(promptText) {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan di Variables Railway!");
@@ -52,7 +52,7 @@ async function startBot() {
         version,
         auth: state,
         printQRInTerminal: false,
-        browser: Browsers.ubuntu("Chrome"),
+        browser: ["Ubuntu", "Chrome", "20.0.04"],
         syncFullHistory: false,
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
@@ -69,17 +69,15 @@ async function startBot() {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             console.log(`[KONEKSI TERPUTUS] Status Code: ${statusCode}`);
 
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
-            if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
+            // Hapus file auth korup jika terputus/gagal taut
+            if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 408 || statusCode === 515) {
                 if (fs.existsSync(AUTH_DIR)) {
                     fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+                    console.log('🧹 Folder auth dibersihkan untuk pairing ulang.');
                 }
             }
 
-            if (shouldReconnect) {
-                setTimeout(() => startBot(), 5000);
-            }
+            setTimeout(() => startBot(), 5000);
         } else if (connection === 'open') {
             console.log('\n==============================================');
             console.log('✅ BOT WHATSAPP BANGUN RUMAH SAMARINDA AKTIF!');
@@ -87,20 +85,22 @@ async function startBot() {
         }
     });
 
+    // Minta Kode Pairing HANYA jika belum pernah bertaut
     if (!sock.authState.creds.registered) {
-        await delay(5000);
+        await delay(6000);
         try {
             const cleanPhone = PHONE_NUMBER.replace(/[^0-9]/g, '');
             const code = await sock.requestPairingCode(cleanPhone);
             console.log('\n==============================================');
-            console.log(`🔑 KODE PAIRING WHATSAPP ANDA: ${code}`);
+            console.log(`🔑 KODE PAIRING BARU ANDA: ${code}`);
             console.log('==============================================');
-            console.log('SEGERA MASUKKAN KODE INI DI WHATSAPP HP ANDA!\n');
+            console.log('SEGERA MASUKKAN KODE INI DI WHATSAPP HP SEKARANG!\n');
         } catch (err) {
             console.error('Gagal meminta kode pairing:', err.message);
         }
     }
 
+    // Listener Pesan Masuk
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
