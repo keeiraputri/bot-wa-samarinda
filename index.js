@@ -8,13 +8,15 @@ const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('/app/auth_info_baileys');
 
-    const sock = makeWASocket({
+const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
-        browser: ["Ubuntu", "Chrome", "22.04.4"]
-    });
-
-    if (!sock.authState.creds.registered) {
+        browser: ["Ubuntu", "Chrome", "22.04.4"],
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 30000,
+        markOnlineOnConnect: true
+    });    if (!sock.authState.creds.registered) {
         const phoneNumber = "6282155852493"; 
         
         setTimeout(async () => {
