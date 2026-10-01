@@ -12,8 +12,8 @@ const path = require('path');
 const pino = require('pino');
 
 const app = express();
-// Render membaca PORT secara otomatis dari Environment
-const PORT = process.env.PORT || 3000;
+// Koyeb menyuntikkan port secara otomatis melalui process.env.PORT
+const PORT = process.env.PORT || 8000;
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 
 let currentQR = '';
@@ -80,7 +80,6 @@ app.get('/', async (req, res) => {
     }
 });
 
-// Port Binding universal untuk server Cloud (0.0.0.0)
 app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Web Server running on port ${PORT}`));
 
 function clearAuth() {
