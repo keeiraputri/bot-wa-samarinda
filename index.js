@@ -1,12 +1,15 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const fs = require('fs');
+const path = require('path');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
 async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState('/app/auth_info_baileys');
+    const authFolder = '/app/auth_info_baileys';
+
+    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
 
     const sock = makeWASocket({
         auth: state,
@@ -22,20 +25,28 @@ async function startBot() {
         const { connection, lastDisconnect } = update;
         
         if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+            const statusCode = lastDisconnect.error?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            
+            console.log(`Koneksi tertutup, mencoba menghubungkan ulang...`);
+            
+            if (statusCode === DisconnectReason.loggedOut) {
+                console.log('Perangkat keluar. Menghapus sesi lama...');
+                if (fs.existsSync(authFolder)) {
+                    fs.rmSync(authFolder, { recursive: true, force: true });
+                }
+            }
+
             if (shouldReconnect) {
-                console.log('Koneksi terputus, mencoba menghubungkan ulang...');
-                startBot();
+                setTimeout(() => startBot(), 5000);
             }
         } else if (connection === 'open') {
             console.log('Bot WhatsApp Bangun Rumah Samarinda berhasil terhubung!');
 
-            // Meminta pairing code setelah koneksi benar-benar terbuka dan mapan
             if (!sock.authState.creds.registered) {
                 try {
                     const phoneNumber = "6282155852493";
-                    // Beri jeda singkat 3 detik setelah open agar stabil
-                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    await new Promise(resolve => setTimeout(resolve, 5000));
                     const code = await sock.requestPairingCode(phoneNumber);
                     console.log(`\n========================================`);
                     console.log(` KODE PAIRING WHATSAPP ANDA: ${code} `);
@@ -57,7 +68,6 @@ async function startBot() {
         if (!msg.message) return;
 
         const sender = msg.key.remoteJid;
-        
         const textMessage = msg.message.conversation || 
                             msg.message.extendedTextMessage?.text || 
                             msg.message.imageMessage?.caption || 
