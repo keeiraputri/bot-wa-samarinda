@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 
 // NOMOR WHATSAPP BOT (Pastikan diawali 62)
-const PHONE_NUMBER = "6282155852493"; 
+const PHONE_NUMBER = "6285849496579"; 
 
 let currentPairingCode = '';
 let isConnected = false;
