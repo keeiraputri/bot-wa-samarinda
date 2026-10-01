@@ -1,30 +1,34 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
 const { GoogleGenAI } = require("@google/genai");
 const fs = require('fs');
-const readline = require('readline');
 
 // Inisialisasi Gemini API Key dari Environment Variable Railway
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-const question = (text) => new Promise((resolve) => rl.question(text, resolve));
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('/app/auth_info_baileys');
 
     const sock = makeWASocket({
         auth: state,
-        printQRInTerminal: false // Kita nonaktifkan QR Code terminal agar pakai Pairing Code
+        printQRInTerminal: false
     });
 
-    // Jika belum terhubung, gunakan Pairing Code via Nomor HP
+    // Jika belum terhubung, otomatis minta Pairing Code ke WhatsApp
     if (!sock.authState.creds.registered) {
-        // Masukkan nomor WhatsApp bot Anda di sini (contoh: 62812345678)
-        const phoneNumber = await question('Masukkan nomor WhatsApp Anda (cth: 628xxx): ');
-        const code = await sock.requestPairingCode(phoneNumber);
-        console.log(`\n========================================`);
-        console.log(` KODE PAIRING WHATSAPP ANDA: ${code} `);
-        console.log(`========================================\n`);
+        // GANTI NOMOR DI BAWAH INI DENGAN NOMOR WHATSAPP ANDA (format: 628xxxxxxxxxx)
+        const phoneNumber = "6281234567890"; 
+        
+        // Beri jeda 5 detik agar koneksi stabil sebelum meminta pairing code
+        setTimeout(async () => {
+            try {
+                const code = await sock.requestPairingCode(phoneNumber);
+                console.log(`\n========================================`);
+                console.log(` KODE PAIRING WHATSAPP ANDA: ${code} `);
+                console.log(`========================================\n`);
+            } catch (err) {
+                console.error('Gagal meminta pairing code:', err);
+            }
+        }, 5000);
     }
 
     sock.ev.on('connection.update', async (update) => {
@@ -56,7 +60,6 @@ async function startBot() {
         console.log(`Pesan masuk dari ${sender}: ${textMessage}`);
 
         try {
-            // Konteks khusus untuk layanan Bangun Rumah Samarinda
             const prompt = `Anda adalah customer service profesional untuk "Bangun Rumah Samarinda", sebuah jasa kontraktor dan renovasi rumah terpercaya di Kota Samarinda. Jawablah pertanyaan klien berikut secara ramah, informatif, dan mengarahkan mereka untuk menggunakan jasa renovasi atau pembangunan rumah lantai 2 di Samarinda: "${textMessage}"`;
 
             const response = await ai.models.generateContent({
