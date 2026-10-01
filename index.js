@@ -1,16 +1,21 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, delay } = require("@whiskeysockets/baileys");
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason, 
+    fetchLatestBaileysVersion,
+    Browsers,
+    delay 
+} = require("@whiskeysockets/baileys");
 const fs = require('fs');
 const path = require('path');
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
-const PHONE_NUMBER = "6282155852493"; // Nomor WhatsApp Anda
+const PHONE_NUMBER = "6285849496579"; // Nomor WhatsApp Anda
 
-// Fungsi pemanggilan Gemini AI langsung via REST API (Bebas Error 404)
+// Fungsi integrasi langsung ke API Gemini
 async function askGemini(promptText) {
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        throw new Error("GEMINI_API_KEY belum dipasang di Environment Variables Railway!");
-    }
+    if (!apiKey) throw new Error("GEMINI_API_KEY tidak ditemukan di Variables Railway!");
 
     const systemInstruction = "Anda adalah Customer Service resmi Bangun Rumah Samarinda (jasa renovasi & pembangunan rumah di Samarinda). Jawablah pertanyaan pelanggan dengan ramah, singkat, dan informatif.";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
@@ -27,26 +32,30 @@ async function askGemini(promptText) {
 
     if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`Gemini Error (${response.status}): ${errText}`);
+        throw new Error(`Gemini API Error (${response.status}): ${errText}`);
     }
 
     const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "Maaf, sistem sedang memproses permintaan Anda. Silakan coba sebentar lagi.";
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || "Maaf, sistem sedang memproses permintaan Anda.";
 }
 
 async function startBot() {
-    // Memuat sesi login
+    // Memastikan menggunakan versi Baileys WhatsApp terbaru
+    const { version } = await fetchLatestBaileysVersion();
+    console.log(`[INFO] Menggunakan WhatsApp Web Version: v${version.join('.')}`);
+
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
     const sock = makeWASocket({
+        version,
         auth: state,
         printQRInTerminal: false,
-        browser: ["Ubuntu", "Chrome", "20.0.04"],
-        syncFullHistory: false, // Mencegah server kehabisan memori
+        browser: Browsers.ubuntu("Chrome"),
+        syncFullHistory: false, // Menghindari crash memori
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
-        keepAliveIntervalMs: 25000,
+        keepAliveIntervalMs: 30000
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -60,9 +69,9 @@ async function startBot() {
 
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-            // Jika sesi tidak valid, hapus folder sesi otomatis agar bisa pautan ulang dari awal
-            if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
-                console.log('Sesi kedaluwarsa. Membesihkan folder auth_info_baileys...');
+            // Jika logout atau ada ralat autentikasi, hapus sesi agar bisa pautan ulang dengan bersih
+            if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 405) {
+                console.log('Sesi rusak/tidak valid. Menghapus folder auth_info_baileys...');
                 if (fs.existsSync(AUTH_DIR)) {
                     fs.rmSync(AUTH_DIR, { recursive: true, force: true });
                 }
@@ -73,21 +82,22 @@ async function startBot() {
                 setTimeout(() => startBot(), 5000);
             }
         } else if (connection === 'open') {
-            console.log('==============================================');
-            console.log('✅ BOT WHATSAPP BANGUN RUMAH SAMARINDA AKTIF!');
-            console.log('==============================================');
+            console.log('\n==============================================');
+            console.log('✅ BOT WHATSAPP SAMARINDA BERHASIL TERHUBUNG!');
+            console.log('==============================================\n');
         }
     });
 
-    // Request Kode Pairing jika belum bertaut
+    // Minta kode pautan hanya jika belum terdaftar
     if (!sock.authState.creds.registered) {
         await delay(6000);
         try {
             const cleanPhone = PHONE_NUMBER.replace(/[^0-9]/g, '');
             const code = await sock.requestPairingCode(cleanPhone);
             console.log('\n==============================================');
-            console.log(`🔑 KODE PAIRING WHATSAPP ANDA: ${code}`);
-            console.log('==============================================\n');
+            console.log(`🔑 KODE PAIRING BARU: ${code}`);
+            console.log('==============================================');
+            console.log('SEGERA MASUKKAN KODE INI DI WHATSAPP HP ANDA!\n');
         } catch (err) {
             console.error('Gagal meminta kode pairing:', err.message);
         }
@@ -101,7 +111,6 @@ async function startBot() {
         if (!msg.message || msg.key.fromMe) return;
 
         const sender = msg.key.remoteJid;
-        // Abaikan pesan grup dan update status
         if (sender.endsWith('@g.us') || sender === 'status@broadcast') return;
 
         const body = msg.message.conversation ||
@@ -111,12 +120,12 @@ async function startBot() {
 
         if (!body) return;
 
-        console.log(`📩 Pesan masuk dari ${sender}: "${body}"`);
+        console.log(`📩 Pesan dari ${sender}: "${body}"`);
 
         try {
             const aiReply = await askGemini(body);
-            console.log(`🤖 Mengirim balasan ke ${sender}`);
             await sock.sendMessage(sender, { text: aiReply });
+            console.log(`🤖 Berhasil membalas ${sender}`);
         } catch (err) {
             console.error('❌ Gagal memproses AI:', err.message);
         }
