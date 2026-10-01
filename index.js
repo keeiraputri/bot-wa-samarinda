@@ -4,7 +4,11 @@ const fs = require('fs');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // Model Gemini sudah diubah ke versi terbaru agar terhindar dari Error 404
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); 
+// Pilihan Utama: Force apiVersion ke 'v1'
+const model = genAI.getGenerativeModel(
+    { model: "gemini-1.5-flash" },
+    { apiVersion: "v1" }
+);
 
 async function startBot() {
     const authFolder = '/app/auth_info_baileys';
