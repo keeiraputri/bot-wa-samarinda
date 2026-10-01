@@ -11,14 +11,14 @@ const pino = require('pino');
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 
-// Pembersihan sesi tidak terhubung
+// Menghapus folder auth jika belum bertaut
 function purgeUnregisteredSession() {
     const credsPath = path.join(AUTH_DIR, 'creds.json');
     if (fs.existsSync(credsPath)) {
         try {
             const credsData = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
             if (!credsData.registered) {
-                console.log('🧹 Menghapus sesi belum terhubung...');
+                console.log('🧹 Menghapus sesi lama...');
                 fs.rmSync(AUTH_DIR, { recursive: true, force: true });
             }
         } catch (e) {
@@ -83,12 +83,14 @@ async function startBot() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        // Cetak QR Code otomatis saat event qr diterima
         if (qr) {
+            // Membuat URL gambar QR Code beresolusi tinggi
+            const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
+            
             console.log('\n==============================================');
-            console.log('📱 SCAN QR CODE INI MENGGUNAKAN WHATSAPP HP:');
+            console.log('🔗 BUKA LINK DI BAWAH INI UNTUK SCAN QR JELAS:');
+            console.log(qrImageUrl);
             console.log('==============================================\n');
-            qrcode.generate(qr, { small: true });
         }
 
         if (connection === 'close') {
