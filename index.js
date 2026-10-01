@@ -1,7 +1,8 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
-const { GoogleGenAI } = require("@google/genai");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('/app/auth_info_baileys');
@@ -50,12 +51,9 @@ async function startBot() {
         try {
             const prompt = `Anda adalah customer service profesional untuk "Bangun Rumah Samarinda", jasa kontraktor dan renovasi rumah di Kota Samarinda. Jawablah pertanyaan klien berikut: "${textMessage}"`;
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-            });
-
-            await sock.sendMessage(sender, { text: response.text });
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            await sock.sendMessage(sender, { text: response.text() });
         } catch (error) {
             console.error('Gagal merespons:', error);
         }
