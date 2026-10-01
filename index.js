@@ -2,23 +2,23 @@ const {
     default: makeWASocket, 
     useMultiFileAuthState, 
     DisconnectReason, 
-    fetchLatestBaileysVersion,
-    Browsers
+    fetchLatestBaileysVersion
 } = require("@whiskeysockets/baileys");
+const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 
-// Fungsi pembersihan folder sesi jika belum terhubung
+// Pembersihan sesi tidak terhubung
 function purgeUnregisteredSession() {
     const credsPath = path.join(AUTH_DIR, 'creds.json');
     if (fs.existsSync(credsPath)) {
         try {
             const credsData = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
             if (!credsData.registered) {
-                console.log('🧹 Menghapus sesi lama untuk generate QR Code bersih...');
+                console.log('🧹 Menghapus sesi belum terhubung...');
                 fs.rmSync(AUTH_DIR, { recursive: true, force: true });
             }
         } catch (e) {
@@ -27,7 +27,7 @@ function purgeUnregisteredSession() {
     }
 }
 
-// Fungsi pemanggilan AI menggunakan Groq API
+// Fungsi AI Groq
 async function askAI(promptText) {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan di Variables Railway!");
@@ -70,8 +70,7 @@ async function startBot() {
         version,
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: true, // Mencetak QR Code langsung di log Railway
-        browser: Browsers.macOS("Desktop"),
+        browser: ["Ubuntu", "Chrome", "20.0.04"],
         syncFullHistory: false,
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
@@ -82,7 +81,15 @@ async function startBot() {
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+
+        // Cetak QR Code otomatis saat event qr diterima
+        if (qr) {
+            console.log('\n==============================================');
+            console.log('📱 SCAN QR CODE INI MENGGUNAKAN WHATSAPP HP:');
+            console.log('==============================================\n');
+            qrcode.generate(qr, { small: true });
+        }
 
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
@@ -102,7 +109,6 @@ async function startBot() {
         }
     });
 
-    // Listener Pesan Masuk
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
