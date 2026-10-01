@@ -1,46 +1,21 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 const fs = require('fs');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 async function startBot() {
-    // Menggunakan multi-file auth state yang bersih
     const { state, saveCreds } = await useMultiFileAuthState('/app/auth_info_baileys');
 
     const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
-        browser: ["Ubuntu", "Chrome", "22.04.4"] // Menyamakan dengan sesi sukses sebelumnya
+        browser: ["Ubuntu", "Chrome", "22.04.4"]
     });
 
     if (!sock.authState.creds.registered) {
         const phoneNumber = "6282155852493"; // Nomor Anda
-        
-        setTimeout(async () => {
-            try {
-                const code = await sock.requestPairingCode(phoneNumber);
-                console.log(`\n========================================`);
-                console.log(` KODE PAIRING WHATSAPP ANDA: ${code} `);
-                console.log(`========================================\n`);
-            } catch (err) {
-                console.error('Gagal meminta pairing code:', err);
-            }
-        }, 5000);
-    }
-        auth: state,
-        printQRInTerminal: false
-    });
-
-    if (!sock.authState.creds.registered) {
-        const phoneNumber = "6282155852493"; // Ganti dengan nomor WhatsApp Anda
         
         setTimeout(async () => {
             try {
@@ -65,19 +40,16 @@ async function startBot() {
     });
 
     sock.ev.on('creds.update', saveCreds);
-sock.ev.on('messages.upsert', async ({ messages, type }) => {
+
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
         
-        console.log("Pesan diterima mentah:", JSON.stringify(msg, null, 2));
-
         if (!msg.message || msg.key.fromMe) return;
 
         const sender = msg.key.remoteJid;
         const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text;
         
-        console.log(`Pesan teks dari ${sender}: ${textMessage}`);
-
         if (!textMessage) return;
 
         try {
@@ -87,7 +59,6 @@ sock.ev.on('messages.upsert', async ({ messages, type }) => {
             const response = await result.response;
             const replyText = response.text();
 
-            console.log(`Mengirim balasan ke ${sender}: ${replyText}`);
             await sock.sendMessage(sender, { text: replyText });
         } catch (error) {
             console.error('Gagal merespons dengan AI:', error);
