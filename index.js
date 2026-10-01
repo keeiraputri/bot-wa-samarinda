@@ -1,7 +1,6 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
 const { GoogleGenAI } = require("@google/genai");
 
-// Inisialisasi Google Gen AI dengan membaca GEMINI_API_KEY dari Environment Variable Railway
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function startBot() {
@@ -12,10 +11,8 @@ async function startBot() {
         printQRInTerminal: false
     });
 
-    // Jika belum terhubung, otomatis minta Pairing Code ke nomor HP
     if (!sock.authState.creds.registered) {
-        // GANTI NOMOR DI BAWAH INI DENGAN NOMOR WHATSAPP ANDA (format: 628xxxxxxxxxx)
-        const phoneNumber = "6282155852493"; 
+        const phoneNumber = "6281234567890"; // Ganti dengan nomor WhatsApp Anda
         
         setTimeout(async () => {
             try {
@@ -33,10 +30,7 @@ async function startBot() {
         const { connection, lastDisconnect } = update;
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Koneksi terputus, mencoba menghubungkan kembali...', shouldReconnect);
-            if (shouldReconnect) {
-                startBot();
-            }
+            if (shouldReconnect) startBot();
         } else if (connection === 'open') {
             console.log('Bot WhatsApp Bangun Rumah Samarinda berhasil terhubung!');
         }
@@ -44,7 +38,6 @@ async function startBot() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Fitur AI Gemini untuk merespons pesan masuk secara otomatis
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
@@ -52,24 +45,19 @@ async function startBot() {
 
         const sender = msg.key.remoteJid;
         const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text;
-
         if (!textMessage) return;
 
-        console.log(`Pesan masuk dari ${sender}: ${textMessage}`);
-
         try {
-            const prompt = `Anda adalah customer service profesional untuk "Bangun Rumah Samarinda", sebuah jasa kontraktor dan renovasi rumah terpercaya di Kota Samarinda. Jawablah pertanyaan klien berikut secara ramah, informatif, dan mengarahkan mereka untuk menggunakan jasa renovasi atau pembangunan rumah lantai 2 di Samarinda: "${textMessage}"`;
+            const prompt = `Anda adalah customer service profesional untuk "Bangun Rumah Samarinda", jasa kontraktor dan renovasi rumah di Kota Samarinda. Jawablah pertanyaan klien berikut: "${textMessage}"`;
 
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: prompt,
             });
 
-            const replyText = response.text;
-            await sock.sendMessage(sender, { text: replyText });
+            await sock.sendMessage(sender, { text: response.text });
         } catch (error) {
-            console.error('Gagal merespons dengan Gemini AI:', error);
-            await sock.sendMessage(sender, { text: 'Maaf, sistem AI sedang sibuk. Silakan coba beberapa saat lagi.' });
+            console.error('Gagal merespons:', error);
         }
     });
 }
