@@ -1,14 +1,13 @@
 {
-  "name": "wa-bot-gemini",
+  "name": "bot-wa-samarinda",
   "version": "1.0.0",
+  "description": "Bot WhatsApp AI Samarinda",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.0",
     "@google/generative-ai": "^0.21.0",
-    "node-fetch": "^2.6.7",
-    "qrcode-terminal": "^0.12.0"
+    "@whiskeysockets/baileys": "^6.7.12"
   }
 }
