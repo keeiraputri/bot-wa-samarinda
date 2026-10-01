@@ -6,29 +6,28 @@ const {
     Browsers
 } = require("@whiskeysockets/baileys");
 const express = require('express');
-const QRCode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 
 let currentQR = '';
 let isConnected = false;
 
-// Server Web untuk Menampilkan QR Live
-app.get('/', async (req, res) => {
+// Web Server
+app.get('/', (req, res) => {
     if (isConnected) {
         return res.send(`
             <!DOCTYPE html>
             <html>
-            <head><title>Bot WA Status</title><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+            <head><title>Bot WA Active</title><meta name="viewport" content="width=device-width, initial-scale=1"></head>
             <body style="font-family: Arial, sans-serif; text-align: center; padding-top: 50px; background: #f4f6f9;">
                 <div style="background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
                     <h1 style="color: #2e7d32; margin-bottom: 10px;">✅ BOT BERHASIL TERHUBUNG!</h1>
-                    <p style="color: #555;">WhatsApp CS Bangun Rumah Samarinda aktif dan siap membalas pesan.</p>
+                    <p style="color: #555;">CS Bangun Rumah Samarinda aktif dan siap membalas pesan.</p>
                 </div>
             </body>
             </html>
@@ -40,56 +39,52 @@ app.get('/', async (req, res) => {
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Memuat QR Code...</title>
-                <meta http-equiv="refresh" content="3">
+                <title>Menyiapkan QR Code...</title>
+                <meta http-equiv="refresh" content="4">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
             </head>
             <body style="font-family: Arial, sans-serif; text-align: center; padding-top: 50px; background: #f4f6f9;">
                 <div style="background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-                    <h2>⏳ Memuat QR Code Baru...</h2>
-                    <p style="color: #666;">Silakan tunggu beberapa detik, halaman memuat ulang otomatis...</p>
+                    <h2>⏳ Sedang Membuat QR Code...</h2>
+                    <p style="color: #666;">Halaman ini otomatis muat ulang dalam 4 detik.</p>
                 </div>
             </body>
             </html>
         `);
     }
 
-    try {
-        const qrImage = await QRCode.toDataURL(currentQR);
-        res.send(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Scan QR Code WhatsApp Bot</title>
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <script>setTimeout(() => location.reload(), 7000);</script>
-            </head>
-            <body style="font-family: Arial, sans-serif; text-align: center; padding-top: 30px; background: #f4f6f9;">
-                <div style="background: white; padding: 25px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 90%;">
-                    <h2 style="color: #075e54; margin-top: 0;">Scan QR Code WhatsApp Bot</h2>
-                    <p style="color: #d32f2f; font-size: 13px; font-weight: bold; margin-bottom: 15px;">Arahkan kamera HP ke gambar ini sekarang:</p>
-                    <img src="${qrImage}" style="width: 270px; height: 270px; border: 1px solid #ddd; padding: 8px; border-radius: 8px;" />
-                    <p style="color: #666; font-size: 12px; margin-top: 15px;">Halaman otomatis diperbarui tiap 7 detik.</p>
-                </div>
-            </body>
-            </html>
-        `);
-    } catch (err) {
-        res.send("Gagal merender QR Code.");
-    }
+    // Menggunakan API QR luar yang cepat dan stabil
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(currentQR)}`;
+
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Scan QR WhatsApp Bot</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <script>setTimeout(() => location.reload(), 8000);</script>
+        </head>
+        <body style="font-family: Arial, sans-serif; text-align: center; padding-top: 30px; background: #f4f6f9;">
+            <div style="background: white; padding: 25px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 90%;">
+                <h2 style="color: #075e54; margin-top: 0;">Scan QR Code WhatsApp</h2>
+                <p style="color: #d32f2f; font-size: 13px; font-weight: bold; margin-bottom: 15px;">Arahkan kamera HP ke gambar di bawah ini:</p>
+                <img src="${qrImageUrl}" alt="QR Code WhatsApp" style="width: 270px; height: 270px; border: 1px solid #ddd; padding: 8px; border-radius: 8px;" />
+                <p style="color: #666; font-size: 12px; margin-top: 15px;">Otomatis refresh tiap 8 detik.</p>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
 app.listen(PORT, () => console.log(`🌐 Web Server running di port ${PORT}`));
 
-// Menghapus sesi lama jika belum terdaftar
 function clearAuth() {
     if (fs.existsSync(AUTH_DIR)) {
-        console.log('🧹 Menghapus folder auth lama untuk membuat sesi bersih...');
+        console.log('🧹 Menghapus folder auth lama...');
         try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
     }
 }
 
-// Fungsi Balas AI Groq
 async function askAI(promptText) {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan di Variables Railway!");
@@ -100,7 +95,7 @@ async function askAI(promptText) {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "Authorization/json"
+            "Content-Type": "application/json"
         },
         body: JSON.stringify({
             model: "llama-3.1-8b-instant",
@@ -140,7 +135,7 @@ async function startBot() {
         version,
         auth: state,
         logger: pino({ level: 'silent' }),
-        browser: Browsers.macOS('Desktop'),
+        browser: Browsers.ubuntu('Desktop'),
         syncFullHistory: false,
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
