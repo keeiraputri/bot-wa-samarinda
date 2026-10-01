@@ -12,7 +12,7 @@ async function startBot() {
     });
 
     if (!sock.authState.creds.registered) {
-        const phoneNumber = "6281234567890"; // Ganti dengan nomor WhatsApp Anda
+        const phoneNumber = "6282155852493"; // Ganti dengan nomor WhatsApp Anda
         
         setTimeout(async () => {
             try {
