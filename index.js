@@ -10,61 +10,39 @@ const fs = require('fs');
 const path = require('path');
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
-const PHONE_NUMBER = "6285849496579"; // Nomor WhatsApp Anda
+const PHONE_NUMBER = "6282155852493"; // Nomor WhatsApp Bot Anda
 
-// Fungsi pemanggilan Gemini API dengan penanganan Rate Limit & Model Resmi
-async function askGemini(promptText, retryCount = 0) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("GEMINI_API_KEY tidak ditemukan di Variables Railway!");
+// Fungsi pemanggilan AI menggunakan Groq API
+async function askAI(promptText) {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan di Variables Railway!");
 
-    const systemInstruction = "Anda adalah Customer Service resmi Bangun Rumah Samarinda (jasa renovasi & pembangunan rumah di Samarinda). Jawablah pertanyaan pelanggan dengan ramah, singkat, dan informatif.";
-    
-    // Model resmi dan paling stabil dari Google AI Studio
-    const models = [
-        'gemini-1.5-flash',
-        'gemini-1.5-pro'
-    ];
+    const systemInstruction = "Anda adalah Customer Service resmi Bangun Rumah Samarinda (jasa renovasi & pembangunan rumah di Samarinda). Jawablah pertanyaan pelanggan dengan ramah, singkat, jelas, dan informatif.";
 
-    let lastError = "";
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+                { role: "system", content: systemInstruction },
+                { role: "user", content: promptText }
+            ],
+            temperature: 0.7,
+            max_tokens: 500
+        })
+    });
 
-    for (const model of models) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{ text: `${systemInstruction}\n\nPertanyaan Pelanggan: ${promptText}` }]
-                    }]
-                })
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (reply) return reply;
-            } else {
-                const errData = await response.json().catch(() => ({}));
-                const status = response.status;
-
-                // Jika terkena batas kuota / rate limit (Status 429), lakukan tunggu otomatis
-                if ((status === 429 || errData?.error?.message?.includes('quota')) && retryCount < 2) {
-                    console.log(`[RATE LIMIT] Terkena batas kuota gratisan. Menunggu 10 detik sebelum coba lagi...`);
-                    await delay(10000); // Tunggu 10 detik
-                    return await askGemini(promptText, retryCount + 1);
-                }
-
-                lastError = errData?.error?.message || `HTTP ${status}`;
-                console.log(`[DEBUG] Model ${model} gagal (${status}): ${lastError}`);
-            }
-        } catch (err) {
-            console.log(`[DEBUG] Model ${model} error: ${err.message}`);
-            lastError = err.message;
-        }
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Groq API Error (${response.status}): ${errText}`);
     }
 
-    throw new Error(`Gagal memproses AI: ${lastError}`);
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || "Maaf, layanan kami sedang tidak dapat memproses balasan saat ini.";
 }
 
 async function startBot() {
@@ -110,7 +88,7 @@ async function startBot() {
         }
     });
 
-    // Minta Kode Pairing otomatis jika belum bertaut
+    // Minta Kode Pairing otomatis jika belum terhubung
     if (!sock.authState.creds.registered) {
         await delay(5000);
         try {
@@ -145,7 +123,7 @@ async function startBot() {
         console.log(`📩 Pesan masuk dari ${sender}: "${body}"`);
 
         try {
-            const aiReply = await askGemini(body);
+            const aiReply = await askAI(body);
             await sock.sendMessage(sender, { text: aiReply });
             console.log(`🤖 Berhasil membalas pesan ke ${sender}`);
         } catch (err) {
