@@ -29,25 +29,25 @@ async function startBot() {
             }
         } else if (connection === 'open') {
             console.log('Bot WhatsApp Bangun Rumah Samarinda berhasil terhubung!');
+
+            // Meminta pairing code setelah koneksi benar-benar terbuka dan mapan
+            if (!sock.authState.creds.registered) {
+                try {
+                    const phoneNumber = "6282155852493";
+                    // Beri jeda singkat 3 detik setelah open agar stabil
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    const code = await sock.requestPairingCode(phoneNumber);
+                    console.log(`\n========================================`);
+                    console.log(` KODE PAIRING WHATSAPP ANDA: ${code} `);
+                    console.log(`========================================\n`);
+                } catch (err) {
+                    console.error('Gagal meminta pairing code:', err);
+                }
+            }
         }
     });
 
     sock.ev.on('creds.update', saveCreds);
-
-    // Meminta pairing code setelah socket aktif jika belum terdaftar
-    if (!sock.authState.creds.registered) {
-        setTimeout(async () => {
-            try {
-                const phoneNumber = "6282155852493";
-                const code = await sock.requestPairingCode(phoneNumber);
-                console.log(`\n========================================`);
-                console.log(` KODE PAIRING WHATSAPP ANDA: ${code} `);
-                console.log(`========================================\n`);
-            } catch (err) {
-                console.error('Gagal meminta pairing code:', err);
-            }
-        }, 8000);
-    }
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
