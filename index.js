@@ -3,24 +3,22 @@ const {
     useMultiFileAuthState, 
     DisconnectReason, 
     fetchLatestBaileysVersion,
-    Browsers,
-    delay
+    Browsers
 } = require("@whiskeysockets/baileys");
 const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
-const PHONE_NUMBER = "6282155852493"; // Nomor WA Bot Anda
 
-// --- FITUR AUTO CLEANUP SESI KORUP BEFORE STARTUP ---
+// Fungsi pembersihan folder sesi jika belum terhubung
 function purgeUnregisteredSession() {
     const credsPath = path.join(AUTH_DIR, 'creds.json');
     if (fs.existsSync(credsPath)) {
         try {
             const credsData = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
             if (!credsData.registered) {
-                console.log('🧹 Sesi lama belum bertaut/korup. Menghapus folder auth...');
+                console.log('🧹 Menghapus sesi lama untuk generate QR Code bersih...');
                 fs.rmSync(AUTH_DIR, { recursive: true, force: true });
             }
         } catch (e) {
@@ -63,7 +61,6 @@ async function askAI(promptText) {
 }
 
 async function startBot() {
-    // Jalankan pembersihan folder jika belum registered
     purgeUnregisteredSession();
 
     const { version } = await fetchLatestBaileysVersion();
@@ -73,8 +70,8 @@ async function startBot() {
         version,
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: false,
-        browser: ["Ubuntu", "Chrome", "20.0.04"],
+        printQRInTerminal: true, // Mencetak QR Code langsung di log Railway
+        browser: Browsers.macOS("Desktop"),
         syncFullHistory: false,
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
@@ -105,21 +102,7 @@ async function startBot() {
         }
     });
 
-    // Minta Kode Pairing baru hanya jika belum terhubung
-    if (!sock.authState.creds.registered) {
-        await delay(6000);
-        try {
-            const cleanPhone = PHONE_NUMBER.replace(/[^0-9]/g, '');
-            const code = await sock.requestPairingCode(cleanPhone);
-            console.log('\n==============================================');
-            console.log(`🔑 KODE PAIRING RESMI BARU: ${code}`);
-            console.log('==============================================');
-            console.log('SEGERA MASUKKAN KODE INI DI WHATSAPP HP!\n');
-        } catch (err) {
-            console.error('Gagal meminta kode pairing:', err.message);
-        }
-    }
-
+    // Listener Pesan Masuk
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
