@@ -1,8 +1,7 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
 const { GoogleGenAI } = require("@google/genai");
-const fs = require('fs');
 
-// Inisialisasi Gemini API Key dari Environment Variable Railway
+// Inisialisasi Google Gen AI dengan membaca GEMINI_API_KEY dari Environment Variable Railway
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function startBot() {
@@ -13,12 +12,11 @@ async function startBot() {
         printQRInTerminal: false
     });
 
-    // Jika belum terhubung, otomatis minta Pairing Code ke WhatsApp
+    // Jika belum terhubung, otomatis minta Pairing Code ke nomor HP
     if (!sock.authState.creds.registered) {
         // GANTI NOMOR DI BAWAH INI DENGAN NOMOR WHATSAPP ANDA (format: 628xxxxxxxxxx)
-        const phoneNumber = "6281234567890"; 
+        const phoneNumber = "6282155852493"; 
         
-        // Beri jeda 5 detik agar koneksi stabil sebelum meminta pairing code
         setTimeout(async () => {
             try {
                 const code = await sock.requestPairingCode(phoneNumber);
@@ -46,7 +44,7 @@ async function startBot() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Fitur AI Gemini untuk merespons pesan masuk
+    // Fitur AI Gemini untuk merespons pesan masuk secara otomatis
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
