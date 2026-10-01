@@ -3,7 +3,6 @@ const {
     useMultiFileAuthState, 
     DisconnectReason, 
     fetchLatestBaileysVersion,
-    Browsers,
     delay
 } = require("@whiskeysockets/baileys");
 const express = require('express');
@@ -15,19 +14,18 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 
-// MASUKKAN NOMOR WA BOT ANDA DI SINI (Format: 628xxx tanpa tanda + atau spasi)
+// NOMOR WHATSAPP BOT (Pastikan diawali 62)
 const PHONE_NUMBER = "6282155852493"; 
 
 let currentPairingCode = '';
 let isConnected = false;
 
-// Web Server untuk menampilkan Kode Pairing
 app.get('/', (req, res) => {
     if (isConnected) {
         return res.send(`
             <div style="text-align:center; font-family:sans-serif; margin-top:50px;">
                 <h1 style="color:green;">✅ BOT WHATSAPP AKTIF & TERHUBUNG!</h1>
-                <p>Layanan CS Bangun Rumah Samarinda siap membalas pesan.</p>
+                <p>CS Bangun Rumah Samarinda siap membalas pesan.</p>
             </div>
         `);
     }
@@ -35,7 +33,7 @@ app.get('/', (req, res) => {
     if (!currentPairingCode) {
         return res.send(`
             <div style="text-align:center; font-family:sans-serif; margin-top:50px;">
-                <h2>⏳ Sedang Meminta Kode Pairing Baru...</h2>
+                <h2>⏳ Memuat Kode Pairing Baru...</h2>
                 <p>Halaman ini akan memuat ulang otomatis dalam 5 detik.</p>
                 <script>setTimeout(() => location.reload(), 5000);</script>
             </div>
@@ -45,19 +43,17 @@ app.get('/', (req, res) => {
     res.send(`
         <div style="text-align:center; font-family:sans-serif; margin-top:40px;">
             <h2>Kode Tautan WhatsApp Bot</h2>
-            <p>Masukkan 8 digit kode di bawah ini pada WhatsApp HP Anda:</p>
-            <div style="font-size: 42px; font-weight: bold; letter-spacing: 5px; color: #007bff; margin: 20px 0; background: #f0f4f8; padding: 15px; display: inline-block; border-radius: 10px; border: 2px dashed #007bff;">
+            <p>Masukkan kode ini segera di WhatsApp HP Anda (Berlaku ~2 menit):</p>
+            <div style="font-size: 42px; font-weight: bold; letter-spacing: 5px; color: #25D366; margin: 20px 0; background: #f0f4f8; padding: 15px; display: inline-block; border-radius: 10px; border: 2px dashed #25D366;">
                 ${currentPairingCode}
             </div>
-            <p style="color: #666; font-size: 14px;">Buka WhatsApp > Perangkat Tertaut > Tautkan Perangkat > <b>Tautkan dengan nomor telepon saja</b></p>
-            <script>setTimeout(() => location.reload(), 15000);</script>
+            <p style="color: #666; font-size: 14px;">WhatsApp > Perangkat Tertaut > Tautkan Perangkat > <b>Tautkan dengan nomor telepon saja</b></p>
         </div>
     `);
 });
 
-app.listen(PORT, () => console.log(`🌐 Web Server berjalan di port ${PORT}`));
+app.listen(PORT, () => console.log(`🌐 Web Server running on port ${PORT}`));
 
-// Fungsi Hapus Sesi Korup
 function purgeSession() {
     if (fs.existsSync(AUTH_DIR)) {
         console.log('🧹 Menghapus folder auth lama...');
@@ -65,7 +61,6 @@ function purgeSession() {
     }
 }
 
-// Fungsi AI Groq
 async function askAI(promptText) {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan di Variables Railway!");
@@ -100,8 +95,6 @@ async function askAI(promptText) {
 
 async function startBot() {
     const credsPath = path.join(AUTH_DIR, 'creds.json');
-    
-    // Jika belum terdaftar, bersihkan sesi lama agar kunci enkripsi selalu fresh
     if (fs.existsSync(credsPath)) {
         try {
             const credsData = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
@@ -118,7 +111,8 @@ async function startBot() {
         version,
         auth: state,
         logger: pino({ level: 'silent' }),
-        browser: Browsers.ubuntu('Chrome'),
+        // Format signature browser yang kompatibel dengan Pairing Code
+        browser: ["Chrome (Linux)", "", ""],
         syncFullHistory: false,
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
@@ -151,19 +145,14 @@ async function startBot() {
         }
     });
 
-    // Minta Kode Pairing jika belum terhubung
     if (!sock.authState.creds.registered) {
-        await delay(5000);
+        await delay(6000);
         try {
             const cleanPhone = PHONE_NUMBER.replace(/[^0-9]/g, '');
             const code = await sock.requestPairingCode(cleanPhone);
-            
-            // Format kode agar ada tanda strip (-) di tengah
             currentPairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
 
-            console.log('\n==============================================');
             console.log(`🔑 KODE PAIRING BARU: ${currentPairingCode}`);
-            console.log('==============================================\n');
         } catch (err) {
             console.error('Gagal meminta kode pairing:', err.message);
         }
