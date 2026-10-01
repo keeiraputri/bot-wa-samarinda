@@ -6,28 +6,30 @@ const {
     Browsers
 } = require("@whiskeysockets/baileys");
 const express = require('express');
+const QRCode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+// Render membaca PORT secara otomatis dari Environment
+const PORT = process.env.PORT || 3000;
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 
 let currentQR = '';
 let isConnected = false;
 
-// Web Server
-app.get('/', (req, res) => {
+// Tampilan Web QR Code
+app.get('/', async (req, res) => {
     if (isConnected) {
         return res.send(`
             <!DOCTYPE html>
             <html>
-            <head><title>Bot WA Active</title><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-            <body style="font-family: Arial, sans-serif; text-align: center; padding-top: 50px; background: #f4f6f9;">
-                <div style="background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-                    <h1 style="color: #2e7d32; margin-bottom: 10px;">✅ BOT BERHASIL TERHUBUNG!</h1>
-                    <p style="color: #555;">CS Bangun Rumah Samarinda aktif dan siap membalas pesan.</p>
+            <head><title>Bot Active</title><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+            <body style="font-family: sans-serif; text-align: center; padding-top: 50px; background: #f0f2f5;">
+                <div style="background: white; padding: 30px; border-radius: 10px; display: inline-block; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <h1 style="color: #25D366;">✅ BOT WHATSAPP AKTIF!</h1>
+                    <p style="color: #555;">CS Bangun Rumah Samarinda siap melayani pesan.</p>
                 </div>
             </body>
             </html>
@@ -39,55 +41,58 @@ app.get('/', (req, res) => {
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Menyiapkan QR Code...</title>
+                <title>Memuat QR...</title>
                 <meta http-equiv="refresh" content="4">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
             </head>
-            <body style="font-family: Arial, sans-serif; text-align: center; padding-top: 50px; background: #f4f6f9;">
-                <div style="background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-                    <h2>⏳ Sedang Membuat QR Code...</h2>
-                    <p style="color: #666;">Halaman ini otomatis muat ulang dalam 4 detik.</p>
+            <body style="font-family: sans-serif; text-align: center; padding-top: 50px; background: #f0f2f5;">
+                <div style="background: white; padding: 30px; border-radius: 10px; display: inline-block;">
+                    <h2>⏳ Memuat QR Code Baru...</h2>
+                    <p style="color: #666;">Silakan tunggu, halaman otomatis memuat ulang dalam 4 detik.</p>
                 </div>
             </body>
             </html>
         `);
     }
 
-    // Menggunakan API QR luar yang cepat dan stabil
-    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(currentQR)}`;
-
-    res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Scan QR WhatsApp Bot</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <script>setTimeout(() => location.reload(), 8000);</script>
-        </head>
-        <body style="font-family: Arial, sans-serif; text-align: center; padding-top: 30px; background: #f4f6f9;">
-            <div style="background: white; padding: 25px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 90%;">
-                <h2 style="color: #075e54; margin-top: 0;">Scan QR Code WhatsApp</h2>
-                <p style="color: #d32f2f; font-size: 13px; font-weight: bold; margin-bottom: 15px;">Arahkan kamera HP ke gambar di bawah ini:</p>
-                <img src="${qrImageUrl}" alt="QR Code WhatsApp" style="width: 270px; height: 270px; border: 1px solid #ddd; padding: 8px; border-radius: 8px;" />
-                <p style="color: #666; font-size: 12px; margin-top: 15px;">Otomatis refresh tiap 8 detik.</p>
-            </div>
-        </body>
-        </html>
-    `);
+    try {
+        const qrImage = await QRCode.toDataURL(currentQR);
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Scan QR WhatsApp Bot</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <script>setTimeout(() => location.reload(), 6000);</script>
+            </head>
+            <body style="font-family: sans-serif; text-align: center; padding-top: 30px; background: #f0f2f5;">
+                <div style="background: white; padding: 25px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                    <h2 style="color: #075e54; margin-top:0;">Scan QR Code WhatsApp Bot</h2>
+                    <p style="color: #d32f2f; font-size: 13px; font-weight: bold;">Scan QR di bawah ini menggunakan WhatsApp HP Anda:</p>
+                    <img src="${qrImage}" style="width: 280px; height: 280px; border: 1px solid #ddd; padding: 8px; border-radius: 8px;" />
+                    <p style="color: #666; font-size: 12px; margin-top: 15px;">Halaman diperbarui otomatis tiap 6 detik.</p>
+                </div>
+            </body>
+            </html>
+        `);
+    } catch (err) {
+        res.send("Gagal membuat gambar QR Code.");
+    }
 });
 
-app.listen(PORT, () => console.log(`🌐 Web Server running di port ${PORT}`));
+// Port Binding universal untuk server Cloud (0.0.0.0)
+app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Web Server running on port ${PORT}`));
 
 function clearAuth() {
     if (fs.existsSync(AUTH_DIR)) {
-        console.log('🧹 Menghapus folder auth lama...');
+        console.log('🧹 Menghapus sesi auth lama...');
         try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
     }
 }
 
 async function askAI(promptText) {
     const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan di Variables Railway!");
+    if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan di Environment Variables!");
 
     const systemInstruction = "Anda adalah Customer Service resmi Bangun Rumah Samarinda (jasa renovasi & pembangunan rumah di Samarinda). Jawablah pertanyaan pelanggan dengan ramah, singkat, jelas, dan informatif.";
 
@@ -150,7 +155,7 @@ async function startBot() {
 
         if (qr) {
             currentQR = qr;
-            console.log('📌 QR Code Baru Berhasil Dibuat di Tampilan Web!');
+            console.log('📌 QR Code Baru Berhasil Dibuat!');
         }
 
         if (connection === 'close') {
