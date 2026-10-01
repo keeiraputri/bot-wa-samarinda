@@ -38,14 +38,19 @@ async function startBot() {
     });
 
     sock.ev.on('creds.update', saveCreds);
-
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
+        
+        console.log("Pesan diterima mentah:", JSON.stringify(msg, null, 2));
+
         if (!msg.message || msg.key.fromMe) return;
 
         const sender = msg.key.remoteJid;
         const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text;
+        
+        console.log(`Pesan teks dari ${sender}: ${textMessage}`);
+
         if (!textMessage) return;
 
         try {
@@ -53,9 +58,12 @@ async function startBot() {
 
             const result = await model.generateContent(prompt);
             const response = await result.response;
-            await sock.sendMessage(sender, { text: response.text() });
+            const replyText = response.text();
+
+            console.log(`Mengirim balasan ke ${sender}: ${replyText}`);
+            await sock.sendMessage(sender, { text: replyText });
         } catch (error) {
-            console.error('Gagal merespons:', error);
+            console.error('Gagal merespons dengan AI:', error);
         }
     });
 }
