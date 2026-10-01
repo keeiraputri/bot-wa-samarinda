@@ -4,10 +4,37 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const fs = require('fs');
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
 async function startBot() {
+    // Menggunakan multi-file auth state yang bersih
     const { state, saveCreds } = await useMultiFileAuthState('/app/auth_info_baileys');
 
     const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: false,
+        browser: ["Ubuntu", "Chrome", "22.04.4"] // Menyamakan dengan sesi sukses sebelumnya
+    });
+
+    if (!sock.authState.creds.registered) {
+        const phoneNumber = "6282155852493"; // Nomor Anda
+        
+        setTimeout(async () => {
+            try {
+                const code = await sock.requestPairingCode(phoneNumber);
+                console.log(`\n========================================`);
+                console.log(` KODE PAIRING WHATSAPP ANDA: ${code} `);
+                console.log(`========================================\n`);
+            } catch (err) {
+                console.error('Gagal meminta pairing code:', err);
+            }
+        }, 5000);
+    }
         auth: state,
         printQRInTerminal: false
     });
