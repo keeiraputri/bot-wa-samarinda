@@ -3,7 +3,8 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const fs = require('fs');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
+// Model Gemini sudah diubah ke versi terbaru agar terhindar dari Error 404
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }); 
 
 async function startBot() {
     const authFolder = '/app/auth_info_baileys';
@@ -13,6 +14,8 @@ async function startBot() {
         auth: state,
         printQRInTerminal: false,
         browser: ["Ubuntu", "Chrome", "22.04.4"],
+        syncFullHistory: false, // MENCEGAH SERVER CRASH SAAT BARU LOGIN
+        generateHighQualityLinkPreview: false,
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 30000,
@@ -44,7 +47,6 @@ async function startBot() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Meminta pairing code langsung jika belum terdaftar
     if (!sock.authState.creds.registered) {
         setTimeout(async () => {
             try {
@@ -67,6 +69,10 @@ async function startBot() {
         if (!msg.message) return;
 
         const sender = msg.key.remoteJid;
+        
+        // Mencegah bot membalas update status/story WhatsApp
+        if(sender === 'status@broadcast') return;
+
         const textMessage = msg.message.conversation || 
                             msg.message.extendedTextMessage?.text || 
                             msg.message.imageMessage?.caption || 
@@ -87,7 +93,6 @@ async function startBot() {
             await sock.sendMessage(sender, { text: replyText });
         } catch (error) {
             console.error('Gagal merespons dengan AI:', error);
-            await sock.sendMessage(sender, { text: 'Maaf, sistem sedang memproses permintaan Anda. Silakan coba sebentar lagi.' });
         }
     });
 }
