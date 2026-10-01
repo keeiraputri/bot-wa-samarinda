@@ -1,4 +1,4 @@
-const { 
+ const { 
     default: makeWASocket, 
     useMultiFileAuthState, 
     DisconnectReason, 
@@ -10,9 +10,8 @@ const fs = require('fs');
 const path = require('path');
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
-const PHONE_NUMBER = "6282155852493"; // Nomor WhatsApp Bot Anda
+const PHONE_NUMBER = "6285849496579";
 
-// Fungsi pemanggilan AI menggunakan Groq API
 async function askAI(promptText) {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan di Variables Railway!");
@@ -26,7 +25,7 @@ async function askAI(promptText) {
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
+            model: "llama-3.1-8b-instant",
             messages: [
                 { role: "system", content: systemInstruction },
                 { role: "user", content: promptText }
@@ -88,7 +87,6 @@ async function startBot() {
         }
     });
 
-    // Minta Kode Pairing otomatis jika belum terhubung
     if (!sock.authState.creds.registered) {
         await delay(5000);
         try {
@@ -103,7 +101,6 @@ async function startBot() {
         }
     }
 
-    // Mendengarkan Pesan Masuk
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
