@@ -3,32 +3,31 @@ const {
     useMultiFileAuthState, 
     DisconnectReason, 
     fetchLatestBaileysVersion,
-    Browsers,
-    delay
+    Browsers
 } = require("@whiskeysockets/baileys");
 const fs = require('fs');
 const path = require('path');
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
-const PHONE_NUMBER = "6285849496579"; // Nomor WhatsApp Anda
 
-// Fungsi pemanggilan Gemini API dengan Auto-Fallback Endpoint (Anti 404)
+// Fungsi pemanggilan Gemini API menggunakan endpoint v1beta resmi Google AI Studio
 async function askGemini(promptText) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("GEMINI_API_KEY tidak ditemukan di Variables Railway!");
 
     const systemInstruction = "Anda adalah Customer Service resmi Bangun Rumah Samarinda (jasa renovasi & pembangunan rumah di Samarinda). Jawablah pertanyaan pelanggan dengan ramah, singkat, dan informatif.";
     
-    // Daftar endpoint API Gemini yang dicoba secara otomatis
-    const endpoints = [
-        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key=${apiKey}`
+    // Daftar nama model v1beta resmi
+    const models = [
+        'gemini-1.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-pro'
     ];
 
     let lastError = "";
 
-    for (const url of endpoints) {
+    for (const model of models) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         try {
             const response = await fetch(url, {
                 method: 'POST',
@@ -45,14 +44,17 @@ async function askGemini(promptText) {
                 const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (reply) return reply;
             } else {
-                lastError = await response.text();
+                const errText = await response.text();
+                console.log(`[DEBUG] Model ${model} gagal (${response.status}): ${errText}`);
+                lastError = errText;
             }
         } catch (err) {
+            console.log(`[DEBUG] Model ${model} error: ${err.message}`);
             lastError = err.message;
         }
     }
 
-    throw new Error(`Semua endpoint Gemini gagal. Detail: ${lastError}`);
+    throw new Error(`Semua model Gemini gagal. Detail: ${lastError}`);
 }
 
 async function startBot() {
@@ -97,21 +99,6 @@ async function startBot() {
             console.log('==============================================\n');
         }
     });
-
-    // Minta kode pautan otomatis jika belum terhubung
-    if (!sock.authState.creds.registered) {
-        await delay(5000);
-        try {
-            const cleanPhone = PHONE_NUMBER.replace(/[^0-9]/g, '');
-            const code = await sock.requestPairingCode(cleanPhone);
-            console.log('\n==============================================');
-            console.log(`🔑 KODE PAIRING WHATSAPP ANDA: ${code}`);
-            console.log('==============================================');
-            console.log('SEGERA MASUKKAN KODE INI DI WHATSAPP HP ANDA!\n');
-        } catch (err) {
-            console.error('Gagal meminta kode pairing:', err.message);
-        }
-    }
 
     // Mendengarkan Pesan Masuk
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
