@@ -28,17 +28,17 @@ function clearAuth() {
 }
 
 async function askAI(promptText) {
-  const apiKey = process.env.GROQ_API_KEY || "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";
+  const apiKey = process.env.GROQ_API_KEY || "gsk_DNZbNPVVyeOfcsppcvCVwGdyb3FYfKnLXokjaSMIMWiblxN1lU";
 
-  const systemPrompt = `Kamu adalah asisten virtual AI cerdas yang ramah, profesional, dan serba bisa.
+  const systemInstruction = `Kamu adalah asisten virtual AI cerdas yang ramah, profesional, dan serba bisa.
 
 PEDOMAN RESPONS:
-   - DILARANG MENGARANG alamat, nomor HP, jam kerja, atau harga RAB fiktif.
-   - Gunakan standar zona waktu WITA (Samarinda).
+- DILARANG MENGARANG alamat, nomor HP, jam kerja, atau harga RAB fiktif.
+- Gunakan standar zona waktu WITA (Samarinda).
 
 2. JIKA MENANYAKAN TOPIK UMUM / INTERNASIONAL / PENGETAHUAN / BAHASA ASING:
-   - Jawablah secara fleksibel, ramah, dan informatif layaknya asisten cerdas umum.
-   - Gunakan bahasa yang disesuaikan dengan pengguna (Bahasa Indonesia, Inggris, Jawa, dll).`;
+- Jawablah secara fleksibel, ramah, dan informatif layaknya asisten cerdas umum.
+- Gunakan bahasa yang disesuaikan dengan pengguna (Bahasa Indonesia, Inggris, Jawa, dll).`;
 
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -47,7 +47,7 @@ PEDOMAN RESPONS:
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: "openai\/gpt-oss-20b",
+      model: "openai/gpt-oss-20b",
       messages: [
         { role: "system", content: systemInstruction },
         { role: "user", content: promptText }
@@ -63,7 +63,7 @@ PEDOMAN RESPONS:
   }
 
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || "Maaf, layanan kami sedang tidak dapat memproses permintaan saat ini.";
+  return data.choices?.[0]?.message?.content || "Maaf, layanan kami sedang tidak dapat memproses permintaan.";
 }
 
 async function initSocket() {
