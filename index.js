@@ -82,9 +82,10 @@ async function initSocket() {
     const { version } = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
-    sock = makeWASocket({
+sock = makeWASocket({
         version,
         auth: state,
+        printQRInTerminal: true,
         logger: pino({ level: 'silent' }),
         browser: ["Mac OS", "Chrome", "121.0.6167.85"],
         syncFullHistory: false,
