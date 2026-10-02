@@ -85,7 +85,6 @@ async function initSocket() {
 sock = makeWASocket({
         version,
         auth: state,
-        printQRInTerminal: true,
         logger: pino({ level: 'silent' }),
         browser: ["Mac OS", "Chrome", "121.0.6167.85"],
         syncFullHistory: false,
