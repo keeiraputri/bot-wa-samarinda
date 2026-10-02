@@ -1,99 +1,37 @@
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    fetchLatestBaileysVersion,
-    Browsers
-} = require("@whiskeysockets/baileys");
+const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    DisconnectReason,
+    fetchLatestBaileysVersion
+} = require('@whiskeysockets/baileys');
 const express = require('express');
-const QRCode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
 
 const app = express();
-// Koyeb menyuntikkan port secara otomatis melalui process.env.PORT
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
 const PORT = process.env.PORT || 8000;
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 
-let currentQR = '';
+let sock = null;
 let isConnected = false;
-
-// Tampilan Web QR Code
-app.get('/', async (req, res) => {
-    if (isConnected) {
-        return res.send(`
-            <!DOCTYPE html>
-            <html>
-            <head><title>Bot Active</title><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-            <body style="font-family: sans-serif; text-align: center; padding-top: 50px; background: #f0f2f5;">
-                <div style="background: white; padding: 30px; border-radius: 10px; display: inline-block; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                    <h1 style="color: #25D366;">✅ BOT WHATSAPP AKTIF!</h1>
-                    <p style="color: #555;">CS Bangun Rumah Samarinda siap melayani pesan.</p>
-                </div>
-            </body>
-            </html>
-        `);
-    }
-
-    if (!currentQR) {
-        return res.send(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Memuat QR...</title>
-                <meta http-equiv="refresh" content="4">
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-            </head>
-            <body style="font-family: sans-serif; text-align: center; padding-top: 50px; background: #f0f2f5;">
-                <div style="background: white; padding: 30px; border-radius: 10px; display: inline-block;">
-                    <h2>⏳ Memuat QR Code Baru...</h2>
-                    <p style="color: #666;">Silakan tunggu, halaman otomatis memuat ulang dalam 4 detik.</p>
-                </div>
-            </body>
-            </html>
-        `);
-    }
-
-    try {
-        const qrImage = await QRCode.toDataURL(currentQR);
-        res.send(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Scan QR WhatsApp Bot</title>
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <script>setTimeout(() => location.reload(), 6000);</script>
-            </head>
-            <body style="font-family: sans-serif; text-align: center; padding-top: 30px; background: #f0f2f5;">
-                <div style="background: white; padding: 25px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                    <h2 style="color: #075e54; margin-top:0;">Scan QR Code WhatsApp Bot</h2>
-                    <p style="color: #d32f2f; font-size: 13px; font-weight: bold;">Scan QR di bawah ini menggunakan WhatsApp HP Anda:</p>
-                    <img src="${qrImage}" style="width: 280px; height: 280px; border: 1px solid #ddd; padding: 8px; border-radius: 8px;" />
-                    <p style="color: #666; font-size: 12px; margin-top: 15px;">Halaman diperbarui otomatis tiap 6 detik.</p>
-                </div>
-            </body>
-            </html>
-        `);
-    } catch (err) {
-        res.send("Gagal membuat gambar QR Code.");
-    }
-});
-
-app.listen(process.env.PORT || 8000, '::', () => console.log(`🌐 Web Server running on port ${process.env.PORT || 8000}`));
+let currentPairingCode = '';
+let pairingError = '';
 
 function clearAuth() {
     if (fs.existsSync(AUTH_DIR)) {
-        console.log('🧹 Menghapus sesi auth lama...');
         try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
     }
 }
 
 async function askAI(promptText) {
     const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan di Environment Variables!");
+    if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan!");
 
-    const systemInstruction = "Anda adalah Customer Service resmi Bangun Rumah Samarinda (jasa renovasi & pembangunan rumah di Samarinda). Jawablah pertanyaan pelanggan dengan ramah, singkat, jelas, dan informatif.";
+    const systemInstruction = "Anda adalah Customer Service resmi Bangun Rumah Samarinda (jasa renovasi & pembangunan rumah di Samarinda). Jawablah pertanyaan pelanggan secara ramah, profesional, dan informatif.";
 
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -121,7 +59,7 @@ async function askAI(promptText) {
     return data.choices?.[0]?.message?.content || "Maaf, layanan kami sedang tidak dapat memproses balasan saat ini.";
 }
 
-async function startBot() {
+async function initSocket() {
     const credsPath = path.join(AUTH_DIR, 'creds.json');
     if (fs.existsSync(credsPath)) {
         try {
@@ -135,53 +73,43 @@ async function startBot() {
     const { version } = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
-    const sock = makeWASocket({
-    version,
-    auth: state,
-    logger: pino({ level: 'silent' }),
-    browser: ["Mac OS", "Desktop", "10.15.7"],
-    syncFullHistory: false,
-    shouldSyncHistoryMessage: () => false,
-    markOnlineOnConnect: false,
-    connectTimeoutMs: 90000,
-    defaultQueryTimeoutMs: 0,
-    keepAliveIntervalMs: 15000
-});
+    sock = makeWASocket({
+        version,
+        auth: state,
+        logger: pino({ level: 'silent' }),
+        browser: ["Mac OS", "Chrome", "121.0.6167.85"],
+        syncFullHistory: false,
+        shouldSyncHistoryMessage: () => false,
+        markOnlineOnConnect: false
+    });
 
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-
-        if (qr) {
-            currentQR = qr;
-            console.log('📌 QR Code Baru Berhasil Dibuat!');
-        }
+        const { connection, lastDisconnect } = update;
 
         if (connection === 'close') {
             isConnected = false;
-            currentQR = '';
+            currentPairingCode = '';
             const statusCode = lastDisconnect?.error?.output?.statusCode;
-            console.log(`[KONEKSI TERPUTUS] Status Code: ${statusCode}`);
+            console.log(`Koneksi Terputus: Status ${statusCode}`);
 
-            if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 408 || statusCode === 515) {
+            if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 408) {
                 clearAuth();
             }
-
-            setTimeout(() => startBot(), 5000);
+            setTimeout(() => initSocket(), 5000);
         } else if (connection === 'open') {
             isConnected = true;
-            currentQR = '';
-            console.log('\n==============================================');
+            currentPairingCode = '';
+            console.log('\n====================================================');
             console.log('✅ BOT WHATSAPP BANGUN RUMAH SAMARINDA AKTIF!');
-            console.log('==============================================\n');
+            console.log('====================================================\n');
         }
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
-
         if (!msg.message || msg.key.fromMe) return;
 
         const sender = msg.key.remoteJid;
@@ -206,4 +134,79 @@ async function startBot() {
     });
 }
 
-startBot();
+app.get('/', (req, res) => {
+    if (isConnected) {
+        return res.send(`
+            <html>
+            <body style="font-family: sans-serif; text-align: center; padding-top: 50px; background: #f0f2f5;">
+                <div style="background: white; padding: 30px; border-radius: 10px; display: inline-block;">
+                    <h1 style="color: #25D366;">✅ BOT WHATSAPP AKTIF!</h1>
+                    <p style="color: #555;">CS Bangun Rumah Samarinda siap melayani pesan.</p>
+                </div>
+            </body>
+            </html>
+        `);
+    }
+
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Tautkan Bot WA</title>
+            <style>
+                body { font-family: sans-serif; text-align: center; padding: 30px 15px; background: #f0f2f5; }
+                .card { background: white; padding: 25px; border-radius: 12px; display: inline-block; max-width: 400px; width: 100%; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                input { width: 90%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; text-align: center; }
+                button { background: #25D366; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 95%; margin-top: 5px; }
+                .code { font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #075e54; background: #e7fceb; padding: 15px; border-radius: 8px; margin-top: 15px; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h2>🔑 Tautkan Bot WhatsApp</h2>
+                <p style="color: #666; font-size: 14px;">Masukkan nomor WA yang ingin dijadikan Bot (awalan 62):</p>
+                <form method="POST" action="/get-code">
+                    <input type="text" name="phone" placeholder="Contoh: 628123456789" required /><br>
+                    <button type="submit">Dapatkan Kode Tautan</button>
+                </form>
+                ${currentPairingCode ? `
+                    <div class="code">${currentPairingCode}</div>
+                    <p style="color:#333; font-size:13px; margin-top:10px;">
+                        <b>Cara Masukkan Kode:</b><br>
+                        Buka WA di HP > Perangkat Tertaut > Tautkan Perangkat > Pilih <b>"Tautkan dengan nomor telepon saja"</b> di bawah.
+                    </p>
+                ` : ''}
+                ${pairingError ? `<p style="color:red; font-size:14px; margin-top:10px;">${pairingError}</p>` : ''}
+            </div>
+        </body>
+        </html>
+    `);
+});
+
+app.post('/get-code', async (req, res) => {
+    let phone = req.body.phone?.replace(/[^0-9]/g, '');
+    if (!phone) {
+        pairingError = "Nomor telepon tidak valid!";
+        return res.redirect('/');
+    }
+    if (!sock) {
+        pairingError = "Sistem belum siap, tunggu 5 detik lalu coba lagi.";
+        return res.redirect('/');
+    }
+    try {
+        pairingError = '';
+        let code = await sock.requestPairingCode(phone);
+        code = code?.match(/.{1,4}/g)?.join("-") || code;
+        currentPairingCode = code;
+    } catch (err) {
+        console.error("Gagal meminta kode:", err);
+        pairingError = "Gagal meminta kode. Pastikan nomor benar dan belum terhubung.";
+    }
+    res.redirect('/');
+});
+
+app.listen(PORT, '::', () => {
+    console.log(`🌐 Web Server running on port ${PORT}`);
+    initSocket();
+});
