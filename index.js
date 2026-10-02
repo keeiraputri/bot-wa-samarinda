@@ -139,7 +139,7 @@ async function startBot() {
         version,
         auth: state,
         logger: pino({ level: 'silent' }),
-        browser: Browsers.ubuntu('Desktop'),
+        browser: ['Mac OS', 'Chrome', '121.0.6167.85'],
         syncFullHistory: false,
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
