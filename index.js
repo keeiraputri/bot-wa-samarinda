@@ -139,12 +139,13 @@ async function startBot() {
     version,
     auth: state,
     logger: pino({ level: 'silent' }),
-    browser: ['Ubuntu', 'Chrome', '20.0.04'],
+    browser: ["Mac OS", "Desktop", "10.15.7"],
     syncFullHistory: false,
     shouldSyncHistoryMessage: () => false,
     markOnlineOnConnect: false,
-    connectTimeoutMs: 60000,
-    keepAliveIntervalMs: 30000
+    connectTimeoutMs: 90000,
+    defaultQueryTimeoutMs: 0,
+    keepAliveIntervalMs: 15000
 });
 
     sock.ev.on('creds.update', saveCreds);
