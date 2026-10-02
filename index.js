@@ -33,8 +33,6 @@ async function askAI(promptText) {
   const systemPrompt = `Kamu adalah asisten virtual AI cerdas yang ramah, profesional, dan serba bisa.
 
 PEDOMAN RESPONS:
-
-1. JIKA MENANYAKAN BISNIS / PERUSAHAAN / BADAN HUKUM (PT. MALIMA GROUP NUSANTARA):
    - DILARANG MENGARANG alamat, nomor HP, jam kerja, atau harga RAB fiktif.
    - Gunakan standar zona waktu WITA (Samarinda).
 
