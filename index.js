@@ -28,34 +28,56 @@ function clearAuth() {
 }
 
 async function askAI(promptText) {
-    const apiKey = process.env.GROQ_API_KEY || "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";
+  const apiKey = process.env.GROQ_API_KEY || "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";
 
-    const systemInstruction = "Anda adalah Customer Service resmi Bangun Rumah Samarinda (jasa renovasi & pembangunan rumah di Samarinda). Jawablah pertanyaan pelanggan secara ramah, profesional, dan informatif.";
+  const systemInstruction = `Anda adalah Asisten AI sekaligus Customer Service resmi dari "Bangun Rumah Samarinda" (Malima Group).
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            model: "openai/gpt-oss-20b",
-            messages: [
-                { role: "system", content: systemInstruction },
-                { role: "user", content: promptText }
-            ],
-            temperature: 0.7,
-            max_tokens: 500
-        })
-    });
+PEDOMAN RESPONS:
 
-    if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Groq API Error (${response.status}): ${errText}`);
-    }
+1. JIKA MENANNYAKAN BISNIS / PERUSAHAAN (PT.MALIMA GROUP NUSANTARA / Bangun Rumah Samarinda):
+   - Wajib gunakan HANYA DATA RESMI PERUSAHAAN di bawah.
+   - DILARANG MENGARANG alamat, nomor HP, jam kerja, atau harga RAB fiktif.
+   - Gunakan standar zona waktu WITA (Samarinda).
+   - Jika ditanya harga pasti/detail RAB: arahkan untuk menunggu balasan langsung dari Admin.
+   - Jika ditanya dimana mas / posisi dimana / halo: arahkan untuk menunggu balasan langsung dari admin.
+   - Jika ditanya Buatkan Gambar dena bangunan dan gambar 3d: arahkan untuk menunggu balasan langsung dari admin.
+2. JIKA MENANNYAKAN TOPIK UMUM / INTERNASIONAL / PENGETAHUAN / BAHASA ASING:
+   - Jawablah secara fleksibel, ramah, dan informatif layaknya asisten cerdas umum.
+   - Gunakan bahasa yang disesuaikan dengan pengguna (Bahasa Jawa, Bahasa Indonesia, Inggris, dll).
 
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || "Maaf, layanan kami sedang tidak dapat memproses balasan saat ini.";
+DATA RESMI PERUSAHAAN:
+- Nama Usaha: Bangun Rumah Samarinda (Malima Group)
+- Layanan Utama: Jasa pembangunan rumah baru, renovasi rumah lantai 1 & 2, konsultasi desain, dan perhitungan RAB.
+- Area Layanan: Kota Samarinda dan sekitarnya.
+- Alamat Kantor: [KANTOR DI jl.kadrie Oening, Air hutam, Kec.Samarinda ulu, kota Samarinda, Kalimantan Timur]
+- Jam Operasional: Senin - Sabtu: 08.00 - 17.00 WITA (Minggu Libur)
+- Kontak Admin: [081180005885]
+- Website Resmi: https://www.bangunrumah.online`;
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "openai/gpt-oss-20b",
+      messages: [
+        { role: "system", content: systemInstruction },
+        { role: "user", content: promptText }
+      ],
+      temperature: 0.3,
+      max_tokens: 500
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Groq API Error (${response.status}): ${errText}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || "Maaf, layanan kami sedang tidak dapat memproses permintaan saat ini.";
 }
 
 async function initSocket() {
