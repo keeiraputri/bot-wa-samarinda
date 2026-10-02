@@ -80,7 +80,7 @@ app.get('/', async (req, res) => {
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Web Server running on port ${PORT}`));
+app.listen(process.env.PORT || 8000, '::', () => console.log(`🌐 Web Server running on port ${process.env.PORT || 8000}`));
 
 function clearAuth() {
     if (fs.existsSync(AUTH_DIR)) {
