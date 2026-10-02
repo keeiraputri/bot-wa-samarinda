@@ -59,7 +59,7 @@ DATA RESMI PERUSAHAAN:
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: "llama3-70b-8192",
+      model: "openai\/gpt-oss-20b",
       messages: [
         { role: "system", content: systemInstruction },
         { role: "user", content: promptText }
