@@ -28,8 +28,7 @@ function clearAuth() {
 }
 
 async function askAI(promptText) {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error("GROQ_API_KEY tidak ditemukan!");
+    const apiKey = process.env.GROQ_API_KEY || "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";
 
     const systemInstruction = "Anda adalah Customer Service resmi Bangun Rumah Samarinda (jasa renovasi & pembangunan rumah di Samarinda). Jawablah pertanyaan pelanggan secara ramah, profesional, dan informatif.";
 
