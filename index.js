@@ -21,8 +21,24 @@ function clearAuth() {
   }
 }
 
-// Fungsi jeda/delay dalam milidetik
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Fungsi jeda sederhana
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Fungsi untuk menjaga status "sedang mengetik..." (titik tiga) tetap muncul selama durationMs (default 4000ms = 4 detik)
+async function keepTyping(jid, durationMs = 4000) {
+  const intervalMs = 1500; // Kirim ulang sinyal pengetikan setiap 1,5 detik
+  const startTime = Date.now();
+  
+  while (Date.now() - startTime < durationMs) {
+    try {
+      await sock.sendPresenceUpdate('composing', jid);
+    } catch (e) {}
+    const remaining = durationMs - (Date.now() - startTime);
+    if (remaining > 0) {
+      await sleep(Math.min(intervalMs, remaining));
+    }
+  }
+}
 
 // Fungsi menentukan salam berdasarkan waktu setempat (WITA / WIB)
 function getGreeting() {
@@ -121,24 +137,23 @@ async function initSocket() {
       const textLower = body.toLowerCase().trim();
       const greeting = getGreeting();
 
-      // Tampilkan status "sedang mengetik..."
-      await sock.sendPresenceUpdate('composing', from);
-
       // Kata kunci khusus pekerjaan/renovasi rumah
       const keywords = ['perbaikan', 'pekerjaan', 'atap', 'dinding', 'renovasi', 'bangun rumah', 'tukang', 'bocor', 'borongan', 'konstruksi', 'cat', 'semen', 'batu', 'harga', 'biaya'];
       const isHomeService = keywords.some(kw => textLower.includes(kw));
 
       if (isHomeService) {
-        // Jeda mengetik selama 4 detik (4000 milidetik)
-        await delay(4000);
+        // Tampilkan animasi titik tiga mengetik terus selama 4 detik penuh
+        await keepTyping(from, 4000);
         await sock.sendPresenceUpdate('paused', from);
         await sock.sendMessage(from, { 
           text: `${greeting}! Sabar ya sebentar lagi dibalas mungkin masih sibuk atau hp di cas. Terima kasih!` 
         });
       } else {
+        // Jalankan proses ambil jawaban AI bersamaan dengan tampilan animasi mengetik 4 detik
         const replyPromise = askAI(body);
-        // Menunggu minimal 4 detik mengetik sebelum membalas pesan
-        const [reply] = await Promise.all([replyPromise, delay(4000)]);
+        const typingPromise = keepTyping(from, 4000);
+
+        const [reply] = await Promise.all([replyPromise, typingPromise]);
         
         await sock.sendPresenceUpdate('paused', from);
         await sock.sendMessage(from, { text: reply });
