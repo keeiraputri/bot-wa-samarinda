@@ -21,10 +21,8 @@ function clearAuth() {
   }
 }
 
-// Fungsi jeda sederhana
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Menjaga indikator "sedang mengetik..." tetap muncul
 async function keepTyping(jid, durationMs = 4000) {
   const intervalMs = 1500;
   const startTime = Date.now();
@@ -40,7 +38,6 @@ async function keepTyping(jid, durationMs = 4000) {
   }
 }
 
-// Menentukan salam berdasarkan waktu (WITA)
 function getGreeting() {
   const hour = new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar", hour: 'numeric', hour12: false });
   const h = parseInt(hour, 10);
@@ -58,9 +55,10 @@ function getGreeting() {
 
 async function askAI(promptText) {
   const greeting = getGreeting();
+  const groqKey = process.env.GROQ_API_KEY || "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";
+
   try {
-    const apiKey = process.env.GROQ_API_KEY || "gsk_DNZbNPVVyeOfcsppcVCVwGdyb3FYfKnLXokjaSMIMWiblXN1lU";
-    const systemInstruction = `Kamu adalah asisten virtual AI cerdas yang ramah dan profesional. Selalu awali jawaban pertamamu dengan ucapan "${greeting}". Jawablah pertanyaan pengguna secara singkat, jelas, ramah, dan informatif.`;
+    const systemInstruction = `Kamu adalah asisten virtual AI cerdas yang ramah dan profesional. Selalu awali jawaban pertamamu dengan ucapan "${greeting}". Jawablah pertanyaan pengguna secara singkat, jelas, dan ramah.`;
 
     const response = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
@@ -75,17 +73,29 @@ async function askAI(promptText) {
       },
       {
         headers: {
-          "Authorization": `Bearer ${apiKey}`,
+          "Authorization": `Bearer ${groqKey}`,
           "Content-Type": "application/json"
         },
         timeout: 15000
       }
     );
 
-    return response.data?.choices?.[0]?.message?.content || `${greeting}! Maaf, saya belum bisa memahami pertanyaan tersebut.`;
+    return response.data?.choices?.[0]?.message?.content || `${greeting}! Ada yang bisa saya bantu?`;
   } catch (err) {
     console.error("Groq API Error Detail:", err.response?.data || err.message);
-    return `${greeting}! Maaf, AI sedang memproses permintaan lain. Silakan coba kirim ulang pesan Anda.`;
+
+    // Jawaban pintar cadangan jika hitungan matematika sederhana
+    if (promptText.includes('x') || promptText.includes('*') || promptText.includes('+') || promptText.includes('-')) {
+      try {
+        const expr = promptText.replace(/x/g, '*');
+        if (/^[0-9\s\+\-\*\/\.\(\)]+$/.test(expr)) {
+          const res = eval(expr);
+          return `${greeting}! Hasil dari ${promptText} adalah ${res}`;
+        }
+      } catch (e) {}
+    }
+
+    return `${greeting}! Halo, ada yang bisa saya bantu terkait layanan kami?`;
   }
 }
 
@@ -141,14 +151,12 @@ async function initSocket() {
       const isHomeService = homeKeywords.some(kw => textLower.includes(kw));
 
       if (isHomeService) {
-        // Tampilkan animasi mengetik selama 4 detik lalu kirim pesan admin
         await keepTyping(from, 4000);
         await sock.sendPresenceUpdate('paused', from);
         await sock.sendMessage(from, { 
           text: `${greeting}! Sabar ya sebentar lagi dibalas mungkin masih sibuk atau hp di cas. Terima kasih!` 
         });
       } else {
-        // Jalankan AI + Animasi mengetik 4 detik
         const replyPromise = askAI(body);
         const typingPromise = keepTyping(from, 4000);
 
