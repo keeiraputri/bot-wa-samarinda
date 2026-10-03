@@ -1,211 +1,194 @@
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    DisconnectReason,
-    fetchLatestBaileysVersion
-} = require('@whiskeysockets/baileys');
-const express = require('express');
-const fs = require('fs');
-const path = require('path');
+const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
+const path = require('path');
+const fs = require('fs');
+const http = require('http');
+const axios = require('axios');
 
-const app = express();
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-
-const PORT = process.env.PORT || 8000;
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
+let pairingCode = "Sedang memproses... Refresh halaman ini beberapa detik lagi.";
+let isConnected = false;
+
+if (!fs.existsSync(AUTH_DIR)) {
+  fs.mkdirSync(AUTH_DIR, { recursive: true });
+}
 
 let sock = null;
-let isConnected = false;
-let currentPairingCode = '';
-let pairingError = '';
 
 function clearAuth() {
-    if (fs.existsSync(AUTH_DIR)) {
-        try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
-    }
+  if (fs.existsSync(AUTH_DIR)) {
+    try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
+  }
+}
+
+// Fungsi menentukan salam berdasarkan waktu setempat (WITA / WIB)
+function getGreeting() {
+  const hour = new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar", hour: 'numeric', hour12: false });
+  const h = parseInt(hour, 10);
+
+  if (h >= 5 && h < 11) {
+    return "Selamat pagi";
+  } else if (h >= 11 && h < 15) {
+    return "Selamat siang";
+  } else if (h >= 15 && h < 18) {
+    return "Selamat sore";
+  } else {
+    return "Selamat malam";
+  }
 }
 
 async function askAI(promptText) {
-  const apiKey = process.env.GROQ_API_KEY || "gsk_DNZbNPVVyeOfcsppcvCVwGdyb3FYfKnLXokjaSMIMWiblxN1lU";
+  try {
+    // API Key Groq untuk Bot Pertama
+    const apiKey = process.env.GROQ_API_KEY || "gsk_DNZbNPVVyeOfcsppcVCVwGdyb3FYfKnLXokjaSMIMWiblXN1lU";
+    const greeting = getGreeting();
+    const systemInstruction = `Kamu adalah asisten virtual AI cerdas dari Samarinda yang ramah, profesional, dan serba bisa. Selalu awali jawaban pertamamu dengan ucapan "${greeting}". Jawablah setiap pertanyaan pengguna secara fleksibel, ramah, dan informatif.`;
 
-  const systemInstruction = `Kamu adalah asisten virtual AI cerdas yang ramah, profesional, dan serba bisa. Jawablah setiap pertanyaan pengguna secara fleksibel, ramah, dan informatif. Gunakan bahasa yang disesuaikan dengan pengguna (Bahasa Indonesia, Inggris, Jawa, dll).`;
+    const response = await axios.post(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { role: "system", content: systemInstruction },
+          { role: "user", content: promptText }
+        ],
+        temperature: 0.5,
+        max_tokens: 500
+      },
+      {
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        timeout: 15000
+      }
+    );
 
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "openai/gpt-oss-120b",
-      messages: [
-        { role: "system", content: systemInstruction },
-        { role: "user", content: promptText }
-      ],
-      temperature: 0.3,
-      max_tokens: 500
-    })
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq API Error (${response.status}): ${errText}`);
+    return response.data?.choices?.[0]?.message?.content || `${greeting}! Maaf, tidak ada jawaban yang dihasilkan.`;
+  } catch (err) {
+    console.error("Groq API Error Detail:", err.response?.data || err.message);
+    const greeting = getGreeting();
+    return `${greeting}! Sabar ya sebentar lagi dibalas mungkin masih sibuk atau hp di cas. Terima kasih!`;
   }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || "Maaf, layanan kami sedang tidak dapat memproses permintaan.";
 }
 
 async function initSocket() {
-    const credsPath = path.join(AUTH_DIR, 'creds.json');
-    if (fs.existsSync(credsPath)) {
-        try {
-            const credsData = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
-            if (!credsData.registered) clearAuth();
-        } catch (e) {
-            clearAuth();
-        }
+  const { version } = await fetchLatestBaileysVersion();
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+
+  sock = makeWASocket({
+    version,
+    auth: state,
+    logger: pino({ level: 'silent' }),
+    browser: ["Ubuntu", "Chrome", "20.0.04"]
+  });
+
+  sock.ev.on('creds.update', saveCreds);
+
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect } = update;
+
+    if (connection === 'close') {
+      isConnected = false;
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 408) {
+        clearAuth();
+      }
+      setTimeout(() => initSocket(), 5000);
+    } else if (connection === 'open') {
+      isConnected = true;
+      pairingCode = "Bot WhatsApp Sudah Terhubung!";
+      console.log('BOT WHATSAPP 1 AKTIF BERHASIL!');
     }
+  });
 
-    const { version } = await fetchLatestBaileysVersion();
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  sock.ev.on('messages.upsert', async (m) => {
+    try {
+      const msg = m.messages[0];
+      if (!msg || msg.key.fromMe) return;
 
-sock = makeWASocket({
-        version,
-        auth: state,
-        logger: pino({ level: 'silent' }),
-        browser: ["Mac OS", "Chrome", "121.0.6167.85"],
-        syncFullHistory: false,
-        shouldSyncHistoryMessage: () => false,
-        markOnlineOnConnect: false
-    });
+      const from = msg.key.remoteJid;
+      
+      const body = msg.message?.conversation || 
+                   msg.message?.extendedTextMessage?.text || 
+                   msg.message?.imageMessage?.caption || 
+                   "";
 
-    sock.ev.on('creds.update', saveCreds);
+      if (!body || body.trim() === "") return;
 
-    sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update;
+      const textLower = body.toLowerCase().trim();
+      const greeting = getGreeting();
 
-        if (connection === 'close') {
-            isConnected = false;
-            currentPairingCode = '';
-            const statusCode = lastDisconnect?.error?.output?.statusCode;
-            console.log(`Koneksi Terputus: Status ${statusCode}`);
+      // Kata kunci khusus pekerjaan/renovasi rumah
+      const keywords = ['perbaikan', 'pekerjaan', 'atap', 'dinding', 'renovasi', 'bangun rumah', 'tukang', 'bocor', 'borongan', 'konstruksi', 'cat', 'semen', 'batu', 'harga', 'biaya'];
+      const isHomeService = keywords.some(kw => textLower.includes(kw));
 
-            if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 408) {
-                clearAuth();
-            }
-            setTimeout(() => initSocket(), 5000);
-        } else if (connection === 'open') {
-            isConnected = true;
-            currentPairingCode = '';
-            console.log('\n====================================================');
-            console.log('✅ BOT WHATSAPP BANGUN RUMAH SAMARINDA AKTIF!');
-            console.log('====================================================\n');
-        }
-    });
-
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') return;
-        const msg = messages[0];
-        if (!msg.message || msg.key.fromMe) return;
-
-        const sender = msg.key.remoteJid;
-        if (sender.endsWith('@g.us') || sender === 'status@broadcast') return;
-
-        const body = msg.message.conversation ||
-                     msg.message.extendedTextMessage?.text ||
-                     msg.message.imageMessage?.caption ||
-                     msg.message.videoMessage?.caption;
-
-        if (!body) return;
-
-        console.log(`📩 Pesan masuk dari ${sender}: "${body}"`);
-
-        try {
-            const aiReply = await askAI(body);
-            await sock.sendMessage(sender, { text: aiReply });
-            console.log(`🤖 Berhasil membalas pesan ke ${sender}`);
-        } catch (err) {
-            console.error('❌ Gagal memproses AI:', err.message);
-        }
-    });
+      if (isHomeService) {
+        await sock.sendMessage(from, { 
+          text: `${greeting}! Sabar ya sebentar lagi dibalas mungkin masih sibuk atau hp di cas. Terima kasih!` 
+        });
+      } else {
+        await sock.sendPresenceUpdate('composing', from);
+        const reply = await askAI(body);
+        await sock.sendPresenceUpdate('paused', from);
+        await sock.sendMessage(from, { text: reply });
+      }
+    } catch (generalErr) {
+      console.error("Error handling message:", generalErr);
+    }
+  });
 }
 
-app.get('/', (req, res) => {
-    if (isConnected) {
-        return res.send(`
-            <html>
-            <body style="font-family: sans-serif; text-align: center; padding-top: 50px; background: #f0f2f5;">
-                <div style="background: white; padding: 30px; border-radius: 10px; display: inline-block;">
-                    <h1 style="color: #25D366;">✅ BOT WHATSAPP AKTIF!</h1>
-                    <p style="color: #555;">CS Bangun Rumah Samarinda siap melayani pesan.</p>
-                </div>
-            </body>
-            </html>
-        `);
-    }
+const PORT = process.env.PORT || 8100;
+const server = http.createServer(async (req, res) => {
+  const urlObj = new URL(req.url, `http://${req.headers.host}`);
+  const number = urlObj.searchParams.get("number");
 
-    res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Tautkan Bot WA</title>
-            <style>
-                body { font-family: sans-serif; text-align: center; padding: 30px 15px; background: #f0f2f5; }
-                .card { background: white; padding: 25px; border-radius: 12px; display: inline-block; max-width: 400px; width: 100%; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-                input { width: 90%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; text-align: center; }
-                button { background: #25D366; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 95%; margin-top: 5px; }
-                .code { font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #075e54; background: #e7fceb; padding: 15px; border-radius: 8px; margin-top: 15px; }
-            </style>
-        </head>
-        <body>
-            <div class="card">
-                <h2>🔑 Tautkan Bot WhatsApp</h2>
-                <p style="color: #666; font-size: 14px;">Masukkan nomor WA yang ingin dijadikan Bot (awalan 62):</p>
-                <form method="POST" action="/get-code">
-                    <input type="text" name="phone" placeholder="Contoh: 628123456789" required /><br>
-                    <button type="submit">Dapatkan Kode Tautan</button>
-                </form>
-                ${currentPairingCode ? `
-                    <div class="code">${currentPairingCode}</div>
-                    <p style="color:#333; font-size:13px; margin-top:10px;">
-                        <b>Cara Masukkan Kode:</b><br>
-                        Buka WA di HP > Perangkat Tertaut > Tautkan Perangkat > Pilih <b>"Tautkan dengan nomor telepon saja"</b> di bawah.
-                    </p>
-                ` : ''}
-                ${pairingError ? `<p style="color:red; font-size:14px; margin-top:10px;">${pairingError}</p>` : ''}
-            </div>
-        </body>
-        </html>
-    `);
-});
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
 
-app.post('/get-code', async (req, res) => {
-    let phone = req.body.phone?.replace(/[^0-9]/g, '');
-    if (!phone) {
-        pairingError = "Nomor telepon tidak valid!";
-        return res.redirect('/');
-    }
-    if (!sock) {
-        pairingError = "Sistem belum siap, tunggu 5 detik lalu coba lagi.";
-        return res.redirect('/');
-    }
+  if (isConnected) {
+    return res.end(`<h2>STATUS: BOT SUDAH TERHUBUNG KE WHATSAPP!</h2>`);
+  }
+
+  if (number) {
     try {
-        pairingError = '';
-        let code = await sock.requestPairingCode(phone);
-        code = code?.match(/.{1,4}/g)?.join("-") || code;
-        currentPairingCode = code;
+      if (sock && !sock.authState.creds.registered) {
+        let code = await sock.requestPairingCode(number.replace(/[^0-9]/g, ''));
+        pairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
+      }
     } catch (err) {
-        console.error("Gagal meminta kode:", err);
-        pairingError = "Gagal meminta kode. Pastikan nomor benar dan belum terhubung.";
+      pairingCode = "Gagal mengambil kode: " + err.message;
     }
-    res.redirect('/');
+  }
+
+  res.end(`
+    <html>
+      <head>
+        <title>Pairing Bot WA 1</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          body { font-family: sans-serif; text-align: center; padding: 20px; background: #f4f4f9; }
+          .card { background: white; padding: 20px; border-radius: 10px; display: inline-block; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          input, button { padding: 10px; font-size: 16px; margin: 5px; border-radius: 5px; border: 1px solid #ccc; }
+          button { background: #25D366; color: white; border: none; cursor: pointer; font-weight: bold; }
+          .code { font-size: 28px; font-weight: bold; color: #075e54; letter-spacing: 2px; margin-top: 15px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h2>Pairing Bot WhatsApp 1</h2>
+          <form method="GET">
+            <input type="text" name="number" placeholder="Contoh: 628123456789" required />
+            <button type="submit">Dapatkan Kode</button>
+          </form>
+          <div class="code">${pairingCode}</div>
+        </div>
+      </body>
+    </html>
+  `);
 });
 
-app.listen(PORT, '::', () => {
-    console.log(`🌐 Web Server running on port ${PORT}`);
-    initSocket();
+server.listen(PORT, () => {
+  console.log(`Server HTTP berjalan di port ${PORT}`);
+  initSocket();
 });
