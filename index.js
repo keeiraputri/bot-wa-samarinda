@@ -21,6 +21,9 @@ function clearAuth() {
   }
 }
 
+// Fungsi jeda/delay dalam milidetik
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // Fungsi menentukan salam berdasarkan waktu setempat (WITA / WIB)
 function getGreeting() {
   const hour = new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar", hour: 'numeric', hour12: false });
@@ -39,7 +42,6 @@ function getGreeting() {
 
 async function askAI(promptText) {
   try {
-    // API Key Groq untuk Bot Pertama
     const apiKey = process.env.GROQ_API_KEY || "gsk_DNZbNPVVyeOfcsppcVCVwGdyb3FYfKnLXokjaSMIMWiblXN1lU";
     const greeting = getGreeting();
     const systemInstruction = `Kamu adalah asisten virtual AI cerdas dari Samarinda yang ramah, profesional, dan serba bisa. Selalu awali jawaban pertamamu dengan ucapan "${greeting}". Jawablah setiap pertanyaan pengguna secara fleksibel, ramah, dan informatif.`;
@@ -98,7 +100,7 @@ async function initSocket() {
     } else if (connection === 'open') {
       isConnected = true;
       pairingCode = "Bot WhatsApp Sudah Terhubung!";
-      console.log('BOT WHATSAPP 1 AKTIF BERHASIL!');
+      console.log('BOT WHATSAPP AKTIF BERHASIL!');
     }
   });
 
@@ -119,17 +121,25 @@ async function initSocket() {
       const textLower = body.toLowerCase().trim();
       const greeting = getGreeting();
 
+      // Tampilkan status "sedang mengetik..."
+      await sock.sendPresenceUpdate('composing', from);
+
       // Kata kunci khusus pekerjaan/renovasi rumah
       const keywords = ['perbaikan', 'pekerjaan', 'atap', 'dinding', 'renovasi', 'bangun rumah', 'tukang', 'bocor', 'borongan', 'konstruksi', 'cat', 'semen', 'batu', 'harga', 'biaya'];
       const isHomeService = keywords.some(kw => textLower.includes(kw));
 
       if (isHomeService) {
+        // Jeda mengetik selama 4 detik (4000 milidetik)
+        await delay(4000);
+        await sock.sendPresenceUpdate('paused', from);
         await sock.sendMessage(from, { 
           text: `${greeting}! Sabar ya sebentar lagi dibalas mungkin masih sibuk atau hp di cas. Terima kasih!` 
         });
       } else {
-        await sock.sendPresenceUpdate('composing', from);
-        const reply = await askAI(body);
+        const replyPromise = askAI(body);
+        // Menunggu minimal 4 detik mengetik sebelum membalas pesan
+        const [reply] = await Promise.all([replyPromise, delay(4000)]);
+        
         await sock.sendPresenceUpdate('paused', from);
         await sock.sendMessage(from, { text: reply });
       }
@@ -164,7 +174,7 @@ const server = http.createServer(async (req, res) => {
   res.end(`
     <html>
       <head>
-        <title>Pairing Bot WA 1</title>
+        <title>Pairing Bot WA</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
           body { font-family: sans-serif; text-align: center; padding: 20px; background: #f4f4f9; }
@@ -176,7 +186,7 @@ const server = http.createServer(async (req, res) => {
       </head>
       <body>
         <div class="card">
-          <h2>Pairing Bot WhatsApp 1</h2>
+          <h2>Pairing Bot WhatsApp</h2>
           <form method="GET">
             <input type="text" name="number" placeholder="Contoh: 628123456789" required />
             <button type="submit">Dapatkan Kode</button>
