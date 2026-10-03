@@ -38,37 +38,22 @@ async function keepTyping(jid, durationMs = 4000) {
   }
 }
 
-function getGreeting() {
-  const hour = new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar", hour: 'numeric', hour12: false });
-  const h = parseInt(hour, 10);
-
-  if (h >= 5 && h < 11) {
-    return "Selamat pagi";
-  } else if (h >= 11 && h < 15) {
-    return "Selamat siang";
-  } else if (h >= 15 && h < 18) {
-    return "Selamat sore";
-  } else {
-    return "Selamat malam";
-  }
-}
-
 async function askAI(promptText) {
-  const greeting = getGreeting();
   const groqKey = process.env.GROQ_API_KEY || "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";
 
   try {
-    const systemInstruction = `Kamu adalah asisten virtual AI cerdas yang ramah dan profesional. Selalu awali jawaban pertamamu dengan ucapan "${greeting}". Jawablah pertanyaan pengguna secara singkat, jelas, dan ramah.`;
+    const systemInstruction = `Kamu adalah asisten AI yang ramah, responsif, cerdas, dan fleksibel. Jawablah pertanyaan pengguna secara langsung, jelas, natural, dan informatif. Tidak perlu selalu mengawali pesan dengan kata "Selamat pagi/siang/sore/malam" kecuali pengguna yang menyapa duluan.`;
 
+    // Menggunakan model llama-3.1-8b-instant yang jauh lebih cepat & stabil
     const response = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
-        model: "llama-3.3-70b-versatile",
+        model: "llama-3.1-8b-instant",
         messages: [
           { role: "system", content: systemInstruction },
           { role: "user", content: promptText }
         ],
-        temperature: 0.5,
+        temperature: 0.7,
         max_tokens: 500
       },
       {
@@ -76,26 +61,29 @@ async function askAI(promptText) {
           "Authorization": `Bearer ${groqKey}`,
           "Content-Type": "application/json"
         },
-        timeout: 15000
+        timeout: 12000
       }
     );
 
-    return response.data?.choices?.[0]?.message?.content || `${greeting}! Ada yang bisa saya bantu?`;
+    const resultText = response.data?.choices?.[0]?.message?.content;
+    if (resultText) return resultText;
+
+    throw new Error("Respon AI kosong");
+
   } catch (err) {
     console.error("Groq API Error Detail:", err.response?.data || err.message);
 
-    // Jawaban pintar cadangan jika hitungan matematika sederhana
-    if (promptText.includes('x') || promptText.includes('*') || promptText.includes('+') || promptText.includes('-')) {
+    // Penanganan kalkulator hitungan otomatis
+    const cleanText = promptText.replace(/x/g, '*').replace(/÷/g, '/');
+    if (/^[0-9\s\+\-\*\/\.\(\)]+$/.test(cleanText.trim())) {
       try {
-        const expr = promptText.replace(/x/g, '*');
-        if (/^[0-9\s\+\-\*\/\.\(\)]+$/.test(expr)) {
-          const res = eval(expr);
-          return `${greeting}! Hasil dari ${promptText} adalah ${res}`;
-        }
+        const res = eval(cleanText);
+        return `Hasil dari ${promptText} adalah ${res}`;
       } catch (e) {}
     }
 
-    return `${greeting}! Halo, ada yang bisa saya bantu terkait layanan kami?`;
+    // Jawaban santai jika API AI sedang sibuk
+    return "Maaf, sistem sedang memproses permintaan lain. Ada yang bisa saya bantu?";
   }
 }
 
@@ -144,9 +132,8 @@ async function initSocket() {
       if (!body || body.trim() === "") return;
 
       const textLower = body.toLowerCase().trim();
-      const greeting = getGreeting();
 
-      // Kata kunci SPESIFIK untuk jasa pembangunan/renovasi rumah
+      // Kata kunci spesifik layanan rumah
       const homeKeywords = ['renovasi', 'bangun rumah', 'atap bocor', 'tukang bangunan', 'borongan rumah', 'cat rumah', 'pasang semen'];
       const isHomeService = homeKeywords.some(kw => textLower.includes(kw));
 
@@ -154,7 +141,7 @@ async function initSocket() {
         await keepTyping(from, 4000);
         await sock.sendPresenceUpdate('paused', from);
         await sock.sendMessage(from, { 
-          text: `${greeting}! Sabar ya sebentar lagi dibalas mungkin masih sibuk atau hp di cas. Terima kasih!` 
+          text: "Halo! Mohon tunggu sebentar ya, pesan Anda akan segera dibalas oleh tim kami. Terima kasih!" 
         });
       } else {
         const replyPromise = askAI(body);
