@@ -29,7 +29,7 @@ async function keepTyping(jid, durationMs = 4000) {
   
   while (Date.now() - startTime < durationMs) {
     try {
-      await sock.sendPresenceUpdate('composing', jid);
+      if (sock) await sock.sendPresenceUpdate('composing', jid);
     } catch (e) {}
     const remaining = durationMs - (Date.now() - startTime);
     if (remaining > 0) {
@@ -44,7 +44,6 @@ async function askAI(promptText) {
   try {
     const systemInstruction = `Kamu adalah asisten AI yang ramah, responsif, cerdas, dan fleksibel. Jawablah pertanyaan pengguna secara langsung, jelas, natural, dan informatif. Tidak perlu selalu mengawali pesan dengan kata "Selamat pagi/siang/sore/malam" kecuali pengguna yang menyapa duluan.`;
 
-    // Menggunakan model llama-3.1-8b-instant yang jauh lebih cepat & stabil
     const response = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
@@ -73,7 +72,6 @@ async function askAI(promptText) {
   } catch (err) {
     console.error("Groq API Error Detail:", err.response?.data || err.message);
 
-    // Penanganan kalkulator hitungan otomatis
     const cleanText = promptText.replace(/x/g, '*').replace(/÷/g, '/');
     if (/^[0-9\s\+\-\*\/\.\(\)]+$/.test(cleanText.trim())) {
       try {
@@ -82,7 +80,6 @@ async function askAI(promptText) {
       } catch (e) {}
     }
 
-    // Jawaban santai jika API AI sedang sibuk
     return "Maaf, sistem sedang memproses permintaan lain. Ada yang bisa saya bantu?";
   }
 }
@@ -95,7 +92,11 @@ async function initSocket() {
     version,
     auth: state,
     logger: pino({ level: 'silent' }),
-    browser: ["Ubuntu", "Chrome", "20.0.04"]
+    browser: ["Ubuntu", "Chrome", "20.0.04"],
+    keepAliveIntervalMs: 10000, // Menjaga ping ke server Baileys tetap aktif
+    pingIntervalMs: 10000,
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 0
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -106,10 +107,18 @@ async function initSocket() {
     if (connection === 'close') {
       isConnected = false;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
-      if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 408) {
+      
+      console.log(`[RECONNECT] Koneksi terputus dengan status code: ${statusCode}`);
+
+      // HANYA hapus auth jika benar-benar di-logout dari HP (StatusCode 401)
+      if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
+        console.log('[LOGOUT] Sesi dicabut dari WhatsApp HP, membersihkan folder auth...');
         clearAuth();
       }
-      setTimeout(() => initSocket(), 5000);
+
+      // Reconnect otomatis dengan jeda singkat
+      setTimeout(() => initSocket(), 3000);
+
     } else if (connection === 'open') {
       isConnected = true;
       pairingCode = "Bot WhatsApp Sudah Terhubung!";
@@ -133,13 +142,12 @@ async function initSocket() {
 
       const textLower = body.toLowerCase().trim();
 
-      // Kata kunci spesifik layanan rumah
       const homeKeywords = ['renovasi', 'bangun rumah', 'atap bocor', 'tukang bangunan', 'borongan rumah', 'cat rumah', 'pasang semen'];
       const isHomeService = homeKeywords.some(kw => textLower.includes(kw));
 
       if (isHomeService) {
         await keepTyping(from, 4000);
-        await sock.sendPresenceUpdate('paused', from);
+        if (sock) await sock.sendPresenceUpdate('paused', from);
         await sock.sendMessage(from, { 
           text: "Halo! Mohon tunggu sebentar ya, pesan Anda akan segera dibalas oleh tim kami. Terima kasih!" 
         });
@@ -149,7 +157,7 @@ async function initSocket() {
 
         const [reply] = await Promise.all([replyPromise, typingPromise]);
         
-        await sock.sendPresenceUpdate('paused', from);
+        if (sock) await sock.sendPresenceUpdate('paused', from);
         await sock.sendMessage(from, { text: reply });
       }
     } catch (generalErr) {
@@ -157,6 +165,15 @@ async function initSocket() {
     }
   });
 }
+
+// Menangani unhandled errors agar process tidak crash total di server
+process.on('uncaughtException', (err) => {
+  console.error('[CRASH PREVENTED]', err);
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('[REJECTION PREVENTED]', err);
+});
 
 const PORT = process.env.PORT || 8100;
 const server = http.createServer(async (req, res) => {
