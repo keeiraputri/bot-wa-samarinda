@@ -23,7 +23,7 @@ function clearAuth() {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function keepTyping(jid, durationMs = 4000) {
+async function keepTyping(jid, durationMs = 3000) {
   const intervalMs = 1500;
   const startTime = Date.now();
   
@@ -39,48 +39,45 @@ async function keepTyping(jid, durationMs = 4000) {
 }
 
 async function askAI(promptText) {
-  const groqKey = process.env.GROQ_API_KEY || "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";
+  // 1. Cek jika input adalah Matematika Sederhana (contoh: 7x9, 66*3, 10+5)
+  const cleanMath = promptText.replace(/x/gi, '*').replace(/÷/g, '/');
+  if (/^[0-9\s\+\-\*\/\.\(\)]+$/.test(cleanMath.trim())) {
+    try {
+      const res = eval(cleanMath);
+      return `Hasil dari ${promptText} adalah ${res}`;
+    } catch (e) {}
+  }
+
+  // 2. Gunakan Gemini API untuk Pertanyaan Umum
+  const apiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6L2dhPYCbXY_w_I6FXm12PDOwZHkDqUxCW5YYqmuSUbHw";
 
   try {
-    const systemInstruction = `Kamu adalah asisten AI yang ramah, responsif, cerdas, dan fleksibel. Jawablah pertanyaan pengguna secara langsung, jelas, natural, dan informatif. Tidak perlu selalu mengawali pesan dengan kata "Selamat pagi/siang/sore/malam" kecuali pengguna yang menyapa duluan.`;
+    const systemPrompt = "Kamu adalah asisten AI yang ramah, cerdas, dan responsif. Jawab pertanyaan pengguna secara ringkas, jelas, dan natural dalam bahasa Indonesia.";
 
     const response = await axios.post(
-      "https://api.groq.com/openai/v1/chat/completions",
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
       {
-        model: "openai/gpt-oss-120b",
-        messages: [
-          { role: "system", content: systemInstruction },
-          { role: "user", content: promptText }
-        ],
-        temperature: 0.7,
-        max_tokens: 500
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: `${systemPrompt}\n\nPertanyaan: ${promptText}` }]
+          }
+        ]
       },
       {
-        headers: {
-          "Authorization": `Bearer ${groqKey}`,
-          "Content-Type": "application/json"
-        },
-        timeout: 12000
+        headers: { "Content-Type": "application/json" },
+        timeout: 10000
       }
     );
 
-    const resultText = response.data?.choices?.[0]?.message?.content;
-    if (resultText) return resultText;
+    const resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (resultText) return resultText.trim();
 
     throw new Error("Respon AI kosong");
 
   } catch (err) {
-    console.error("Groq API Error Detail:", err.response?.data || err.message);
-
-    const cleanText = promptText.replace(/x/g, '*').replace(/÷/g, '/');
-    if (/^[0-9\s\+\-\*\/\.\(\)]+$/.test(cleanText.trim())) {
-      try {
-        const res = eval(cleanText);
-        return `Hasil dari ${promptText} adalah ${res}`;
-      } catch (e) {}
-    }
-
-    return "Maaf, sistem sedang memproses permintaan lain. Ada yang bisa saya bantu?";
+    console.error("Gemini API Error Detail:", err.response?.data || err.message);
+    return "Maaf, terjadi kendala saat memproses jawaban. Silakan coba beberapa saat lagi.";
   }
 }
 
@@ -93,7 +90,7 @@ async function initSocket() {
     auth: state,
     logger: pino({ level: 'silent' }),
     browser: ["Ubuntu", "Chrome", "20.0.04"],
-    keepAliveIntervalMs: 10000, // Menjaga ping ke server Baileys tetap aktif
+    keepAliveIntervalMs: 10000,
     pingIntervalMs: 10000,
     connectTimeoutMs: 60000,
     defaultQueryTimeoutMs: 0
@@ -107,16 +104,13 @@ async function initSocket() {
     if (connection === 'close') {
       isConnected = false;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
-      
-      console.log(`[RECONNECT] Koneksi terputus dengan status code: ${statusCode}`);
+      console.log(`[RECONNECT] Terputus (Status: ${statusCode})`);
 
-      // HANYA hapus auth jika benar-benar di-logout dari HP (StatusCode 401)
       if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
-        console.log('[LOGOUT] Sesi dicabut dari WhatsApp HP, membersihkan folder auth...');
+        console.log('[LOGOUT] Sesi dicabut, membersihkan folder auth...');
         clearAuth();
       }
 
-      // Reconnect otomatis dengan jeda singkat
       setTimeout(() => initSocket(), 3000);
 
     } else if (connection === 'open') {
@@ -132,7 +126,6 @@ async function initSocket() {
       if (!msg || msg.key.fromMe) return;
 
       const from = msg.key.remoteJid;
-      
       const body = msg.message?.conversation || 
                    msg.message?.extendedTextMessage?.text || 
                    msg.message?.imageMessage?.caption || 
@@ -146,14 +139,14 @@ async function initSocket() {
       const isHomeService = homeKeywords.some(kw => textLower.includes(kw));
 
       if (isHomeService) {
-        await keepTyping(from, 4000);
+        await keepTyping(from, 3000);
         if (sock) await sock.sendPresenceUpdate('paused', from);
         await sock.sendMessage(from, { 
           text: "Halo! Mohon tunggu sebentar ya, pesan Anda akan segera dibalas oleh tim kami. Terima kasih!" 
         });
       } else {
         const replyPromise = askAI(body);
-        const typingPromise = keepTyping(from, 4000);
+        const typingPromise = keepTyping(from, 3000);
 
         const [reply] = await Promise.all([replyPromise, typingPromise]);
         
@@ -166,7 +159,6 @@ async function initSocket() {
   });
 }
 
-// Menangani unhandled errors agar process tidak crash total di server
 process.on('uncaughtException', (err) => {
   console.error('[CRASH PREVENTED]', err);
 });
