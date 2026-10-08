@@ -39,7 +39,7 @@ async function keepTyping(jid, durationMs = 3000) {
 }
 
 async function askAI(promptText) {
-  // 1. Cek jika input adalah Matematika Sederhana
+  // 1. Fitur Matematika Sederhana
   const cleanMath = promptText.replace(/x/gi, '*').replace(/÷/g, '/');
   if (/^[0-9\s\+\-\*\/\.\(\)]+$/.test(cleanMath.trim())) {
     try {
@@ -48,8 +48,8 @@ async function askAI(promptText) {
     } catch (e) {}
   }
 
-  // 2. Baca API Key dari Environment Variable atau kunci langsung
-  const apiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6If7Ct5MKJ2QI3PQJNR38RWdQRPm0U3fdCu3ET8Yrxlw";
+  // 2. Ambil API Key dari Environment Variable
+  const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
     console.error("GEMINI_API_KEY belum dikonfigurasi.");
@@ -58,9 +58,10 @@ async function askAI(promptText) {
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Menggunakan model efisien gemini-2.5-flash-lite (atau gemini-1.5-flash)
+    
+    // Menggunakan model gemini-3.6-flash
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-flash-lite",
+      model: "gemini-3.6-flash",
       systemInstruction: "Kamu adalah asisten AI yang ramah, cerdas, dan responsif dari Bangun Rumah Samarinda. Jawab pertanyaan pengguna secara ringkas, jelas, dan natural dalam bahasa Indonesia."
     });
 
