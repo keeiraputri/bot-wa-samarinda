@@ -1,7 +1,6 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const express = require('express');
 const QRCode = require('qrcode');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
 const PORT = process.env.PORT || 8100;
@@ -9,6 +8,7 @@ const PORT = process.env.PORT || 8100;
 let qrCodeData = '';
 
 async function askAI(promptText) {
+  // 1. Fitur Matematika Sederhana
   const cleanMath = promptText.replace(/x/gi, '*').replace(/÷/g, '/');
   if (/^[0-9\s\+\-\*\/\.\(\)]+$/.test(cleanMath.trim())) {
     try {
@@ -17,6 +17,7 @@ async function askAI(promptText) {
     } catch (e) {}
   }
 
+  // 2. Ambil Kunci dari Environment
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
@@ -24,22 +25,42 @@ async function askAI(promptText) {
     return "Maaf, sistem AI belum siap.";
   }
 
+  // 3. Panggilan HTTP Langsung ke API Google Gemini
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-flash-lite",
-      systemInstruction: "Kamu adalah asisten AI yang ramah, cerdas, dan responsif dari Bangun Rumah Samarinda. Jawab pertanyaan pengguna secara ringkas, jelas, dan natural dalam bahasa Indonesia."
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`;
+
+    const requestBody = {
+      systemInstruction: {
+        parts: [{ text: "Kamu adalah asisten AI yang ramah, cerdas, dan responsif dari Bangun Rumah Samarinda. Jawab pertanyaan pengguna secara ringkas, jelas, dan natural dalam bahasa Indonesia." }]
+      },
+      contents: [{
+        parts: [{ text: promptText }]
+      }]
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
     });
 
-    const result = await model.generateContent(promptText);
-    const responseText = result.response.text();
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("HTTP Error Response:", JSON.stringify(data));
+      throw new Error(data.error?.message || `HTTP status ${response.status}`);
+    }
+
+    const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (responseText) return responseText.trim();
 
     throw new Error("Respon AI kosong");
 
   } catch (err) {
-    console.error("Gemini SDK Error Detail:", err.message || err);
+    console.error("Gemini Direct Fetch Error:", err.message || err);
     return "Maaf, terjadi kendala saat memproses jawaban. Silakan coba beberapa saat lagi.";
   }
 }
