@@ -1,20 +1,14 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const express = require('express');
 const QRCode = require('qrcode');
-const { OpenAI } = require('openai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
 const PORT = process.env.PORT || 8100;
 
 let qrCodeData = '';
 
-// Inisialisasi Client OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || "SK-YOUR-OPENAI-API-KEY",
-});
-
 async function askAI(promptText) {
-  // 1. Fitur Matematika Sederhana
   const cleanMath = promptText.replace(/x/gi, '*').replace(/÷/g, '/');
   if (/^[0-9\s\+\-\*\/\.\(\)]+$/.test(cleanMath.trim())) {
     try {
@@ -23,31 +17,29 @@ async function askAI(promptText) {
     } catch (e) {}
   }
 
-  // 2. Kirim Permintaan ke OpenAI
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    console.error("GEMINI_API_KEY belum dikonfigurasi.");
+    return "Maaf, sistem AI belum siap.";
+  }
+
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Bisa diganti gpt-4o, gpt-4.1-mini, dll.
-      messages: [
-        {
-          role: "system",
-          content: "Kamu adalah asisten AI yang ramah, cerdas, dan responsif dari Bangun Rumah Samarinda. Jawab pertanyaan pengguna secara ringkas, jelas, dan natural dalam bahasa Indonesia."
-        },
-        {
-          role: "user",
-          content: promptText
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 500,
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.5-flash-lite",
+      systemInstruction: "Kamu adalah asisten AI yang ramah, cerdas, dan responsif dari Bangun Rumah Samarinda. Jawab pertanyaan pengguna secara ringkas, jelas, dan natural dalam bahasa Indonesia."
     });
 
-    const reply = response.choices[0]?.message?.content;
-    if (reply) return reply.trim();
+    const result = await model.generateContent(promptText);
+    const responseText = result.response.text();
 
-    throw new Error("Respon OpenAI kosong");
+    if (responseText) return responseText.trim();
+
+    throw new Error("Respon AI kosong");
 
   } catch (err) {
-    console.error("OpenAI SDK Error Detail:", err.message || err);
+    console.error("Gemini SDK Error Detail:", err.message || err);
     return "Maaf, terjadi kendala saat memproses jawaban. Silakan coba beberapa saat lagi.";
   }
 }
@@ -92,14 +84,12 @@ async function connectToWhatsApp() {
 
       console.log(`Pesan masuk dari ${from}: ${text}`);
 
-      // Dapatkan balasan dari AI / Matematika
       const aiResponse = await askAI(text);
       await sock.sendMessage(from, { text: aiResponse }, { quoted: msg });
     }
   });
 }
 
-// Server HTTP untuk Pairing Code / QR Code Viewer
 app.get('/', (req, res) => {
   if (qrCodeData) {
     res.send(`<h2>Scan QR Code WhatsApp:</h2><img src="${qrCodeData}"/>`);
