@@ -1,9 +1,9 @@
 const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = require('@whiskeysockets/baileys');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 const pino = require('pino');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const axios = require('axios');
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 let pairingCode = "Sedang memproses... Refresh halaman ini beberapa detik lagi.";
@@ -39,7 +39,7 @@ async function keepTyping(jid, durationMs = 3000) {
 }
 
 async function askAI(promptText) {
-  // 1. Cek jika input adalah Matematika Sederhana (contoh: 7x9, 66*3, 10+5)
+  // 1. Cek jika input adalah Matematika Sederhana
   const cleanMath = promptText.replace(/x/gi, '*').replace(/÷/g, '/');
   if (/^[0-9\s\+\-\*\/\.\(\)]+$/.test(cleanMath.trim())) {
     try {
@@ -48,35 +48,31 @@ async function askAI(promptText) {
     } catch (e) {}
   }
 
-  // 2. Gunakan Gemini API untuk Pertanyaan Umum
-  const apiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6L2dhPYCbXY_w_I6FXm12PDOwZHkDqUxCW5YYqmuSUbHw";
+  // 2. Baca API Key dari Environment Variable
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    console.error("GEMINI_API_KEY belum dikonfigurasi.");
+    return "Maaf, sistem AI sedang belum siap.";
+  }
 
   try {
-    const systemPrompt = "Kamu adalah asisten AI yang ramah, cerdas, dan responsif. Jawab pertanyaan pengguna secara ringkas, jelas, dan natural dalam bahasa Indonesia.";
+    const genAI = new GoogleGenerativeAI(apiKey);
+    // Menggunakan model efisien gemini-2.5-flash-lite / gemini-1.5-flash
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.5-flash-lite",
+      systemInstruction: "Kamu adalah asisten AI yang ramah, cerdas, dan responsif dari Bangun Rumah Samarinda. Jawab pertanyaan pengguna secara ringkas, jelas, dan natural dalam bahasa Indonesia."
+    });
 
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: `${systemPrompt}\n\nPertanyaan: ${promptText}` }]
-          }
-        ]
-      },
-      {
-        headers: { "Content-Type": "application/json" },
-        timeout: 10000
-      }
-    );
+    const result = await model.generateContent(promptText);
+    const responseText = result.response.text();
 
-    const resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (resultText) return resultText.trim();
+    if (responseText) return responseText.trim();
 
     throw new Error("Respon AI kosong");
 
   } catch (err) {
-    console.error("Gemini API Error Detail:", err.response?.data || err.message);
+    console.error("Gemini SDK Error Detail:", err.message || err);
     return "Maaf, terjadi kendala saat memproses jawaban. Silakan coba beberapa saat lagi.";
   }
 }
@@ -104,10 +100,10 @@ async function initSocket() {
     if (connection === 'close') {
       isConnected = false;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
-      console.log(`[RECONNECT] Terputus (Status: ${statusCode})`);
+      console.log(`[RECONNECT] Terputus (Status Code: ${statusCode})`);
 
       if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
-        console.log('[LOGOUT] Sesi dicabut, membersihkan folder auth...');
+        console.log('[LOGOUT] Sesi dicabut dari WhatsApp, membersihkan folder auth...');
         clearAuth();
       }
 
